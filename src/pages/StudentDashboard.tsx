@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Wifi, WifiOff, Clock, Camera } from 'lucide-react'
+import { Wifi, WifiOff, Clock, Camera, CheckCircle, RefreshCw } from 'lucide-react'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 
@@ -10,6 +10,13 @@ export default function StudentDashboard() {
   const [time, setTime] = useState(new Date())
   const [hasTimedIn, setHasTimedIn] = useState(false)
   const [pendingSyncs, setPendingSyncs] = useState(0)
+  
+  // Camera states
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isCameraOpen, setIsCameraOpen] = useState(false)
+  const [stream, setStream] = useState<MediaStream | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
 
   // Relo at Network Status
   useEffect(() => {
@@ -26,35 +33,100 @@ export default function StudentDashboard() {
   }, [])
 
   // I-check kung may pending syncs sa IndexedDB
+  const checkQueue = async () => {
+    const count = await db.syncQueue.where('status').equals('pending').count()
+    setPendingSyncs(count)
+  }
+
   useEffect(() => {
-    const checkQueue = async () => {
-      const count = await db.syncQueue.where('status').equals('pending').count()
-      setPendingSyncs(count)
-    }
     checkQueue()
   }, [hasTimedIn])
 
-  const handleTimeIn = async () => {
-    if (!user) return
+  // AUTOMATIC SYNC KAPAG BUMALIK ANG INTERNET
+  useEffect(() => {
+    const syncData = async () => {
+      if (!isOnline) return
+      const pendingItems = await db.syncQueue.where('status').equals('pending').toArray()
+      
+      if (pendingItems.length === 0) return
+      setIsSyncing(true)
+
+      for (const item of pendingItems) {
+        try {
+          if (item.action === 'TIME_IN') {
+            const { error } = await supabase.from('attendance').insert({
+              lrn: item.payload.lrn,
+              date: item.payload.date,
+              time_in: item.payload.time,
+              time_in_photo: item.payload.photo_url
+            })
+            if (error && error.code !== '23505') throw error // 23505 = duplicate (okay lang)
+          }
+          
+          // Kapag success, i-delete sa queue
+          await db.syncQueue.delete(item.id!)
+        } catch (err) {
+          console.error("Sync failed for item", item.id, err)
+        }
+      }
+      
+      setIsSyncing(false)
+      checkQueue()
+    }
+
+    syncData()
+  }, [isOnline])
+
+  // CAMERA LOGIC
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+      setStream(mediaStream)
+      setIsCameraOpen(true)
+      setTimeout(() => {
+        if (videoRef.current) videoRef.current.srcObject = mediaStream
+      }, 100)
+    } catch (err) {
+      alert("Hindi ma-access ang camera. Pakicheck ang permissions.")
+    }
+  }
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+      setStream(null)
+    }
+    setIsCameraOpen(false)
+  }
+
+  const captureAndTimeIn = async () => {
+    if (!videoRef.current || !canvasRef.current) return
+    
+    // 1. Kunin ang image sa camera
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0)
+    
+    // I-compress ang image para hindi lumaki ang storage
+    const photoBase64 = canvas.toDataURL('image/jpeg', 0.5)
+    
+    // 2. I-save sa IndexedDB (Offline)
     const now = new Date()
     const today = now.toISOString().split('T')[0]
-    
-    // 1. I-save sa IndexedDB (Offline First)
+    const timeStr = now.toTimeString().split(' ')[0]
+
     await db.syncQueue.add({
       action: 'TIME_IN',
-      payload: { lrn: user.id, date: today, time: now.toTimeString().split(' ')[0] },
+      payload: { lrn: user?.id, date: today, time: timeStr, photo_url: photoBase64 },
       status: 'pending',
       createdAt: now.toISOString()
     })
     
     setHasTimedIn(true)
-    setPendingSyncs(prev => prev + 1)
-
-    // 2. Kung online, subukang i-sync agad
-    if (isOnline) {
-      // Dito papasok ang sync logic natin mamaya
-      console.log("Online: Attempting to sync...")
-    }
+    checkQueue()
+    stopCamera()
   }
 
   return (
@@ -71,9 +143,21 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="p-4 max-w-md mx-auto space-y-4">
         
+        {/* Network Status Banner */}
+        {!isOnline && (
+          <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm text-center border border-red-100">
+            Offline ka ngayon. Ang iyong Time-In ay naka-save sa device at awtomatikong ipapadala kapag may internet na.
+          </div>
+        )}
+
+        {isSyncing && (
+          <div className="bg-blue-50 text-blue-700 p-3 rounded-xl text-sm flex items-center justify-center gap-2 border border-blue-100">
+            <RefreshCw className="animate-spin" size={16} /> Nag-sa-sync ng data...
+          </div>
+        )}
+
         {/* Relo at Time In Card */}
         <div className="bg-white p-6 rounded-2xl shadow-sm text-center border border-gray-100">
           <div className="text-4xl font-bold text-gray-800 tracking-tight mb-1">
@@ -83,16 +167,28 @@ export default function StudentDashboard() {
             {time.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </div>
 
-          <button
-            onClick={handleTimeIn}
-            disabled={hasTimedIn}
-            className={`w-full py-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all ${
-              hasTimedIn ? 'bg-gray-100 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200'
-            }`}
-          >
-            <Camera size={28} />
-            <span className="font-bold text-lg">{hasTimedIn ? 'Timed In Today' : 'Time In Now'}</span>
-          </button>
+          {isCameraOpen ? (
+            <div className="space-y-3">
+              <div className="relative rounded-xl overflow-hidden bg-black aspect-square w-full max-w-[300px] mx-auto">
+                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={stopCamera} className="flex-1 py-3 rounded-xl bg-gray-200 text-gray-700 font-bold">Cancel</button>
+                <button onClick={captureAndTimeIn} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200">Capture</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={startCamera}
+              disabled={hasTimedIn}
+              className={`w-full py-4 rounded-xl flex flex-col items-center justify-center gap-2 transition-all ${
+                hasTimedIn ? 'bg-gray-100 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200'
+              }`}
+            >
+              {hasTimedIn ? <CheckCircle size={28} /> : <Camera size={28} />}
+              <span className="font-bold text-lg">{hasTimedIn ? 'Timed In Today' : 'Time In Now'}</span>
+            </button>
+          )}
         </div>
 
         {/* Pending Sync Info */}
@@ -107,6 +203,9 @@ export default function StudentDashboard() {
           Logout
         </button>
       </div>
+      
+      {/* Hidden canvas for capturing image */}
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   )
 }
