@@ -2,15 +2,35 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Loader2, ArrowLeft } from 'lucide-react'
 
-// Mga pagpipilian para sa dropdowns
-const FIELDS = ['Health', 'Agriculture', 'Engineering/IT', 'Business', 'Education']
+// Dito natin kinuha lahat ng choices base sa binigay mong lumang Code.gs
+const FIELDS = [
+  'Health', 
+  'Agriculture', 
+  'Engineering/IT', 
+  'Business', 
+  'Education'
+]
+
 const COURSES = {
-  'Health': ['Nursing', 'Medical Technology'],
-  'Agriculture': ['BS Agriculture', 'Agribusiness'],
-  'Engineering/IT': ['IT', 'Civil Engineering', 'Electrical Engineering'],
-  'Business': ['Accountancy', 'Business Admin'],
-  'Education': ['BEEd', 'BSEd']
+  'Health': ['Nursing', 'Medical Technology', 'Caregiving'],
+  'Agriculture': ['BS Agriculture', 'Agribusiness', 'Animal Science'],
+  'Engineering/IT': ['IT', 'Civil Engineering', 'Electrical Engineering', 'Computer Science'],
+  'Business': ['Accountancy', 'Business Admin', 'Entrepreneurship', 'Marketing'],
+  'Education': ['BEEd', 'BSEd', 'Early Childhood Education']
 }
+
+const DEPLOYMENT_AREAS = [
+  'RHU San Jose',
+  'Lying-In Clinic',
+  'LGU San Jose',
+  'SHEBA',
+  'Department of Agriculture',
+  'Sta. Cruz Elementary School',
+  'Iba Elementary School',
+  'Papay\'s Bakeshop',
+  'School',
+  'Other'
+]
 
 export default function Register({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false)
@@ -36,7 +56,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
     setLoading(true)
 
     try {
-      // 1. Check kung existing na ang LRN
       const { data: existing } = await supabase
         .from('students')
         .select('lrn')
@@ -45,7 +64,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
         
       if (existing) throw new Error('Ang LRN na ito ay rehistrado na. Pakisubukang mag-login.')
 
-      // 2. Gumawa ng Supabase Auth account
       const { error: authError } = await supabase.auth.signUp({
         email: `${formData.lrn}@student.local`,
         password: formData.password,
@@ -53,7 +71,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
 
       if (authError) throw new Error('May error sa paggawa ng account: ' + authError.message)
 
-      // 3. I-save sa students table (Status: Pending)
       const { error: dbError } = await supabase.from('students').insert({
         lrn: formData.lrn,
         first_name: formData.firstName,
@@ -63,7 +80,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
         field: formData.field,
         course: formData.course,
         deployment_area: formData.deploymentArea,
-        password_hash: formData.password, // Dapat i-hash ito sa totoong app
+        password_hash: formData.password,
         status: 'Pending'
       })
 
@@ -84,7 +101,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
     setFormData({
       ...formData, 
       field: selectedField,
-      course: COURSES[selectedField as keyof typeof COURSES][0] // Reset course sa unang option
+      course: COURSES[selectedField as keyof typeof COURSES][0] // Reset course sa unang option ng field
     })
   }
 
@@ -104,11 +121,11 @@ export default function Register({ onBack }: { onBack: () => void }) {
         {success && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4">{success}</div>}
 
         <form onSubmit={handleRegister} className="space-y-3">
-          {/* LRN at Pangalan */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">LRN (12 Digits)</label>
             <input required type="text" maxLength={12} value={formData.lrn} onChange={e => setFormData({...formData, lrn: e.target.value.replace(/\D/g, '')})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="123456789012" />
           </div>
+          
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
@@ -119,12 +136,12 @@ export default function Register({ onBack }: { onBack: () => void }) {
               <input required type="text" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
           </div>
+          
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
             <input type="text" value={formData.middleName} onChange={e => setFormData({...formData, middleName: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
 
-          {/* Section at Field */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
@@ -141,7 +158,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
             </div>
           </div>
 
-          {/* Course at Deployment Area */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
@@ -151,7 +167,10 @@ export default function Register({ onBack }: { onBack: () => void }) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Deployment Area</label>
-              <input required type="text" value={formData.deploymentArea} onChange={e => setFormData({...formData, deploymentArea: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Hal. RHU San Jose" />
+              <select required value={formData.deploymentArea} onChange={e => setFormData({...formData, deploymentArea: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <option value="" disabled>Select Area</option>
+                {DEPLOYMENT_AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
             </div>
           </div>
 
