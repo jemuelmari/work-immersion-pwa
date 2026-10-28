@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
-import Register from './pages/Register' // Idinagdag
+import Register from './pages/Register' // Siguraduhing may import na ito
 import StudentDashboard from './pages/StudentDashboard'
 import StudentDiary from './pages/StudentDiary'
 import TeacherDashboard from './pages/TeacherDashboard'
