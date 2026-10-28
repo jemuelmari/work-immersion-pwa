@@ -19,6 +19,7 @@ const COURSE_TO_FIELD: Record<string, string> = {
   'Civil Engineering': 'Engineering/IT',
   'Electrical Engineering': 'Engineering/IT',
   'Computer Science': 'Engineering/IT',
+  'Geodetic Engineering': 'Engineering/IT',
   
   // Business
   'Accountancy': 'Business',
