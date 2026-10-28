@@ -64,16 +64,36 @@ export default function TeacherDashboard() {
     setLoadingAttendance(false)
   }
 
-  // Kuwentahin ang lahat ng oras
+  // === COMPUTE HOURS (MANUAL) ===
+  const computeHours = (timeIn: string, timeOut: string) => {
+    if (!timeIn || !timeOut) return 0;
+    
+    try {
+      const t1 = timeIn.split(':').map(Number);
+      const t2 = timeOut.split(':').map(Number);
+      
+      let seconds1 = (t1[0] * 3600) + (t1[1] * 60) + (t1[2] || 0);
+      let seconds2 = (t2[0] * 3600) + (t2[1] * 60) + (t2[2] || 0);
+      
+      let diff = seconds2 - seconds1;
+      if (diff < 0) diff += 24 * 3600; // Handle midnight crossover
+      
+      return (diff / 3600).toFixed(2);
+    } catch (e) {
+      return "0.00";
+    }
+  }
+
   const calculateTotalHours = () => {
     let total = 0
     attendance.forEach(rec => {
-      total += rec.total_hours || 0
+      const hours = parseFloat(computeHours(rec.time_in, rec.time_out))
+      total += hours
     })
     return total.toFixed(2)
   }
 
-  // === BAGONG DEPED FORM 48 EXPORT ===
+  // === DEPED FORM 48 EXPORT ===
   const handleExportDTR = () => {
     if (!selectedStudent || attendance.length === 0) return
 
@@ -82,41 +102,49 @@ export default function TeacherDashboard() {
     csvContent += `Section: ${selectedStudent.section}\n`
     csvContent += `LRN: ${selectedStudent.lrn}\n\n`
     
-    // DepEd Form 48 Header
     csvContent += "Day,Date,AM Arrival,AM Departure,PM Arrival,PM Departure,Undertime (Hrs),Total Hours\n"
     
     let grandTotal = 0;
 
     attendance.forEach((rec, index) => {
       const dayNum = index + 1;
-      const tIn = rec.time_in ? rec.time_in.split(':') : null;
-      const tOut = rec.time_out ? rec.time_out.split(':') : null;
+      const tIn = rec.time_in ? rec.time_in.split(':').map(Number) : null;
+      const tOut = rec.time_out ? rec.time_out.split(':').map(Number) : null;
       
       let amArrival = "-", amDeparture = "-", pmArrival = "-", pmDeparture = "-";
-      
-      if (tIn && tOut) {
-        const inHour = parseInt(tIn[0]);
-        const outHour = parseInt(tOut[0]);
+      let totalHrs = 0;
 
-        if (inHour < 12) {
-          amArrival = rec.time_in;
-          if (outHour < 13) amDeparture = rec.time_out;
-        }
+      if (tIn && tOut) {
+        const inHour = tIn[0];
+        const outHour = tOut[0];
         
+        // Format as 12-hour with AM/PM
+        const formatTime = (h: number, m: number) => {
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const h12 = h % 12 || 12;
+          return `${h12.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${ampm}`;
+        };
+
+        const formattedIn = formatTime(tIn[0], tIn[1]);
+        const formattedOut = formatTime(tOut[0], tOut[1]);
+        totalHrs = parseFloat(computeHours(rec.time_in, rec.time_out));
+        
+        if (inHour < 12) {
+          amArrival = formattedIn;
+          if (outHour < 13) amDeparture = formattedOut;
+        }
         if (inHour >= 12 || outHour >= 13) {
           if (inHour < 12 && outHour >= 13) {
-             amDeparture = "12:00:00";
-             pmArrival = "13:00:00";
+             amDeparture = "12:00 PM";
+             pmArrival = "01:00 PM";
           } else if (inHour >= 12) {
-             pmArrival = rec.time_in;
+             pmArrival = formattedIn;
           }
-          pmDeparture = rec.time_out;
+          pmDeparture = formattedOut;
         }
       }
 
-      const totalHrs = rec.total_hours || 0;
-      grandTotal += parseFloat(totalHrs);
-
+      grandTotal += totalHrs;
       csvContent += `${dayNum},${rec.date},${amArrival},${amDeparture},${pmArrival},${pmDeparture},${totalHrs > 0 ? '0' : '-'},${totalHrs.toFixed(2)}\n`;
     })
 
@@ -259,22 +287,25 @@ export default function TeacherDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {attendance.map(rec => (
-                        <tr key={rec.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-gray-700 font-medium">{rec.date}</td>
-                          <td className="px-4 py-3 text-gray-600">{rec.time_in || '-'}</td>
-                          <td className="px-4 py-3 text-gray-600">{rec.time_out || '-'}</td>
-                          <td className="px-4 py-3 flex gap-2">
-                            {rec.time_in_photo && (
-                              <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors">In Photo</button>
-                            )}
-                            {rec.time_out_photo && (
-                              <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 transition-colors">Out Photo</button>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-gray-800 font-bold text-right">{rec.total_hours || 0} hrs</td>
-                        </tr>
-                      ))}
+                      {attendance.map(rec => {
+                        const hours = computeHours(rec.time_in, rec.time_out);
+                        return (
+                          <tr key={rec.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-gray-700 font-medium">{rec.date}</td>
+                            <td className="px-4 py-3 text-gray-600">{rec.time_in || '-'}</td>
+                            <td className="px-4 py-3 text-gray-600">{rec.time_out || '-'}</td>
+                            <td className="px-4 py-3 flex gap-2">
+                              {rec.time_in_photo && (
+                                <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors">In Photo</button>
+                              )}
+                              {rec.time_out_photo && (
+                                <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 transition-colors">Out Photo</button>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-800 font-bold text-right">{hours} hrs</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </>
