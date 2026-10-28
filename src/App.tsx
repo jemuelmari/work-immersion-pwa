@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
-import Register from './pages/Register' // Siguraduhing may import na ito
+import Register from './pages/Register'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentDiary from './pages/StudentDiary'
 import TeacherDashboard from './pages/TeacherDashboard'
@@ -13,7 +13,9 @@ function AppContent() {
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
   
   if (!user) {
-    if (currentPage === 'register') return <Register />
+    if (currentPage === 'register') {
+      return <Register onBack={() => setCurrentPage('dashboard')} />
+    }
     return <Login onGoToRegister={() => setCurrentPage('register')} />
   }
 
