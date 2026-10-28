@@ -16,6 +16,8 @@ interface AttendanceRecord {
   time_in: string;
   time_out: string;
   total_hours: number;
+  time_in_photo: string;
+  time_out_photo: string;
 }
 
 export default function TeacherDashboard() {
@@ -24,10 +26,10 @@ export default function TeacherDashboard() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   
-  // Modal states
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([])
   const [loadingAttendance, setLoadingAttendance] = useState(false)
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -36,9 +38,7 @@ export default function TeacherDashboard() {
         .select('lrn, first_name, last_name, section')
         .order('last_name', { ascending: true })
       
-      if (!error && data) {
-        setStudents(data)
-      }
+      if (!error && data) setStudents(data)
       setLoading(false)
     }
     fetchStudents()
@@ -50,7 +50,6 @@ export default function TeacherDashboard() {
     s.lrn.includes(searchTerm)
   )
 
-  // Function para tingnan ang attendance
   const handleViewRecord = async (student: Student) => {
     setSelectedStudent(student)
     setLoadingAttendance(true)
@@ -61,25 +60,28 @@ export default function TeacherDashboard() {
       .eq('lrn', student.lrn)
       .order('date', { ascending: true })
       
-    if (!error && data) {
-      setAttendance(data)
-    }
+    if (!error && data) setAttendance(data)
     setLoadingAttendance(false)
   }
 
-  // Function para mag-export ng CSV (Para sa Excel / DepEd Form 48)
+  // Calculate total hours from all records
+  const calculateTotalHours = () => {
+    let total = 0
+    attendance.forEach(rec => {
+      total += rec.total_hours || 0
+    })
+    return total.toFixed(2)
+  }
+
   const handleExportDTR = () => {
     if (!selectedStudent || attendance.length === 0) return
 
-    // Header ng CSV
     let csvContent = "LRN,Name,Section,Date,Time In,Time Out,Total Hours\n"
     
-    // Data rows
     attendance.forEach(rec => {
       csvContent += `${selectedStudent.lrn},"${selectedStudent.last_name}, ${selectedStudent.first_name}",${selectedStudent.section},${rec.date},${rec.time_in || ''},${rec.time_out || ''},${rec.total_hours || 0}\n`
     })
 
-    // Pag-download ng file
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement("a")
     const url = URL.createObjectURL(blob)
@@ -175,23 +177,16 @@ export default function TeacherDashboard() {
                     </td>
                   </tr>
                 ))}
-                {filteredStudents.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-gray-500">No students found.</td>
-                  </tr>
-                )}
               </tbody>
             </table>
           )}
         </div>
       </div>
 
-      {/* MODAL: Student Attendance Record */}
+      {/* MODAL */}
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            
-            {/* Modal Header */}
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-bold text-gray-800">Attendance Record</h3>
@@ -202,37 +197,50 @@ export default function TeacherDashboard() {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-6 overflow-y-auto flex-1">
               {loadingAttendance ? (
                 <div className="text-center py-10 text-gray-500">Loading records...</div>
               ) : attendance.length === 0 ? (
-                <div className="text-center py-10 text-gray-500">Wala pang record si {selectedStudent.first_name}.</div>
+                <div className="text-center py-10 text-gray-500">Wala pang record.</div>
               ) : (
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-500">
-                    <tr>
-                      <th className="px-4 py-3 font-medium rounded-l-lg">Date</th>
-                      <th className="px-4 py-3 font-medium">Time In</th>
-                      <th className="px-4 py-3 font-medium">Time Out</th>
-                      <th className="px-4 py-3 font-medium text-right rounded-r-lg">Total Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {attendance.map(rec => (
-                      <tr key={rec.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-700 font-medium">{rec.date}</td>
-                        <td className="px-4 py-3 text-gray-600">{rec.time_in || '-'}</td>
-                        <td className="px-4 py-3 text-gray-600">{rec.time_out || '-'}</td>
-                        <td className="px-4 py-3 text-gray-800 font-bold text-right">{rec.total_hours || 0} hrs</td>
+                <>
+                  <div className="mb-4 bg-blue-50 p-4 rounded-lg flex justify-between items-center">
+                    <span className="font-medium text-blue-800">Total Rendered Hours:</span>
+                    <span className="text-2xl font-bold text-blue-600">{calculateTotalHours()} hrs</span>
+                  </div>
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-gray-500">
+                      <tr>
+                        <th className="px-4 py-3 font-medium rounded-l-lg">Date</th>
+                        <th className="px-4 py-3 font-medium">Time In</th>
+                        <th className="px-4 py-3 font-medium">Time Out</th>
+                        <th className="px-4 py-3 font-medium">Photos</th>
+                        <th className="px-4 py-3 font-medium text-right rounded-r-lg">Total Hours</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {attendance.map(rec => (
+                        <tr key={rec.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-gray-700 font-medium">{rec.date}</td>
+                          <td className="px-4 py-3 text-gray-600">{rec.time_in || '-'}</td>
+                          <td className="px-4 py-3 text-gray-600">{rec.time_out || '-'}</td>
+                          <td className="px-4 py-3 flex gap-2">
+                            {rec.time_in_photo && (
+                              <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">In Photo</button>
+                            )}
+                            {rec.time_out_photo && (
+                              <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">Out Photo</button>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-gray-800 font-bold text-right">{rec.total_hours || 0} hrs</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
 
-            {/* Modal Footer */}
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-2xl">
               <button 
                 onClick={() => setSelectedStudent(null)}
@@ -249,6 +257,13 @@ export default function TeacherDashboard() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Photo Viewer Modal */}
+      {selectedPhoto && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
+          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-lg" />
         </div>
       )}
     </div>
