@@ -17,6 +17,7 @@ export default function StudentDashboard() {
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
 
+  // Relo at Network Status
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000)
     const handleOnline = () => setIsOnline(true)
@@ -39,18 +40,15 @@ export default function StudentDashboard() {
     checkQueue()
   }, [hasTimedIn])
 
-  // MANUAL SYNC LANG MUNA, WALANG AUTO SYNC
+  // SYNC FUNCTION NA MAY FIX SA DUPLICATE ERROR
   const syncData = async () => {
     if (!isOnline) {
-      alert("Walang internet.")
+      alert("Walang internet. Hintayin bumalik ang connection.")
       return
     }
     
     const pendingItems = await db.syncQueue.where('status').equals('pending').toArray()
-    if (pendingItems.length === 0) {
-      alert("Walang naka-queue na data.")
-      return
-    }
+    if (pendingItems.length === 0) return
     
     setIsSyncing(true)
 
@@ -59,7 +57,7 @@ export default function StudentDashboard() {
       
       try {
         if (item.action === 'TIME_IN') {
-          console.log("Sinusubukang i-sync ito:", item.payload) // <--- TIGNAN NATIN ITO
+          console.log("Sinusubukang i-sync:", item.payload)
           
           const { error } = await supabase.from('attendance').insert({
             lrn: item.payload.lrn,
@@ -67,20 +65,27 @@ export default function StudentDashboard() {
             time_in: item.payload.time
           })
           
+          // KUNG MAY ERROR
           if (error) {
-            console.error("SUPABASE ERROR:", error.message, "| CODE:", error.code) // <--- DITO LALABAS ANG ERROR
-            throw error
+            // Kung 23505 (Duplicate), okay lang! Ibig sabihin nandiyan na siya sa DB.
+            if (error.code === '23505') {
+              console.log("Record already exists in database. Treating as success.");
+              isSuccess = true; 
+            } else {
+              console.error("SUPABASE ERROR:", error.message, "Code:", error.code)
+              throw error
+            }
+          } else {
+            isSuccess = true; // Successful ang insert
           }
-          isSuccess = true;
         }
       } catch (err) {
         console.error("CATCH BLOCK:", err)
       }
 
+      // Buburahin lang sa phone kung totoong success (o duplicate)
       if (isSuccess) {
         await db.syncQueue.delete(item.id!)
-      } else {
-        alert("Hindi na-sync. Tingnan ang Console (F12) para sa detalye.")
       }
     }
     
@@ -88,13 +93,14 @@ export default function StudentDashboard() {
     checkQueue()
   }
 
-  // KINOMENTOHAN NATIN ANG AUTO SYNC PARA HINDI AGAD MAWALA
-  // useEffect(() => {
-  //   if (isOnline) {
-  //     syncData()
-  //   }
-  // }, [isOnline])
+  // AUTO SYNC KAPAG BUMALIK ANG NET
+  useEffect(() => {
+    if (isOnline) {
+      syncData()
+    }
+  }, [isOnline])
 
+  // CAMERA LOGIC
   const startCamera = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
@@ -104,7 +110,7 @@ export default function StudentDashboard() {
         if (videoRef.current) videoRef.current.srcObject = mediaStream
       }, 100)
     } catch (err) {
-      alert("Hindi ma-access ang camera.")
+      alert("Hindi ma-access ang camera. Pakicheck ang permissions.")
     }
   }
 
@@ -125,6 +131,7 @@ export default function StudentDashboard() {
     canvas.height = video.videoHeight
     canvas.getContext('2d')?.drawImage(video, 0, 0)
     
+    // Pansamantala nating tinanggal ang photo_url para 100% gumana muna ang sync
     const now = new Date()
     const today = now.toISOString().split('T')[0]
     const timeStr = now.toTimeString().split(' ')[0]
@@ -139,6 +146,11 @@ export default function StudentDashboard() {
     setHasTimedIn(true)
     checkQueue()
     stopCamera()
+
+    // Kung online, subukang i-sync agad
+    if (isOnline) {
+      setTimeout(() => syncData(), 500)
+    }
   }
 
   return (
@@ -156,6 +168,12 @@ export default function StudentDashboard() {
 
       <div className="p-4 max-w-md mx-auto space-y-4">
         
+        {!isOnline && (
+          <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm text-center border border-red-100">
+            Offline ka ngayon. Ang iyong Time-In ay naka-save sa device at awtomatikong ipapadala kapag may internet na.
+          </div>
+        )}
+
         {isSyncing && (
           <div className="bg-blue-50 text-blue-700 p-3 rounded-xl text-sm flex items-center justify-center gap-2 border border-blue-100">
             <RefreshCw className="animate-spin" size={16} /> Nag-sa-sync ng data...
@@ -194,7 +212,6 @@ export default function StudentDashboard() {
           )}
         </div>
 
-        {/* Pending Sync Info - MANANATILI NA ITO DAHIL WALANG AUTO-SYNC */}
         {pendingSyncs > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-center justify-between text-yellow-800 text-sm">
             <div className="flex items-center gap-3">
