@@ -1,35 +1,52 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Loader2, ArrowLeft } from 'lucide-react'
 
-// Dito natin kinuha lahat ng choices base sa binigay mong lumang Code.gs
-const FIELDS = [
-  'Health', 
-  'Agriculture', 
-  'Engineering/IT', 
-  'Business', 
-  'Education'
-]
-
-const COURSES = {
-  'Health': ['Nursing', 'Medical Technology', 'Caregiving'],
-  'Agriculture': ['BS Agriculture', 'Agribusiness', 'Animal Science'],
-  'Engineering/IT': ['IT', 'Civil Engineering', 'Electrical Engineering', 'Computer Science'],
-  'Business': ['Accountancy', 'Business Admin', 'Entrepreneurship', 'Marketing'],
-  'Education': ['BEEd', 'BSEd', 'Early Childhood Education']
+// Dito natin nilagay lahat ng Courses at kung anong Field sila nabibilang
+const COURSE_TO_FIELD: Record<string, string> = {
+  // Health
+  'Nursing': 'Health',
+  'Medical Technology': 'Health',
+  'Caregiving': 'Health',
+  
+  // Agriculture
+  'BS Agriculture': 'Agriculture',
+  'Agribusiness': 'Agriculture',
+  'Animal Science': 'Agriculture',
+  
+  // Engineering/IT
+  'IT': 'Engineering/IT',
+  'Civil Engineering': 'Engineering/IT',
+  'Electrical Engineering': 'Engineering/IT',
+  'Computer Science': 'Engineering/IT',
+  
+  // Business
+  'Accountancy': 'Business',
+  'Business Admin': 'Business',
+  'Entrepreneurship': 'Business',
+  'Marketing': 'Business',
+  
+  // Education
+  'BEEd': 'Education',
+  'BSEd': 'Education',
+  'Early Childhood Education': 'Education'
 }
 
-const DEPLOYMENT_AREAS = [
-  'RHU San Jose',
-  'Lying-In Clinic',
-  'LGU San Jose',
-  'SHEBA',
-  'Department of Agriculture',
+// Listahan ng Deployment Areas base sa Field
+const FIELD_TO_AREAS: Record<string, string[]> = {
+  'Health': ['RHU San Jose', 'Lying-In Clinic', 'Hospital'],
+  'Agriculture': ['SHEBA', 'Department of Agriculture', 'Farm'],
+  'Engineering/IT': ['LGU San Jose', 'Construction Site', 'IT Company'],
+  'Business': ['LGU San Jose', 'Papay\'s Bakeshop', 'Bank', 'Office'],
+  'Education': [] // Walang area, School ang lalabas
+}
+
+// Listahan ng Schools kung Education ang Field
+const SCHOOLS = [
   'Sta. Cruz Elementary School',
   'Iba Elementary School',
-  'Papay\'s Bakeshop',
-  'School',
-  'Other'
+  'San Jose National High School',
+  'Other School'
 ]
 
 export default function Register({ onBack }: { onBack: () => void }) {
@@ -43,11 +60,29 @@ export default function Register({ onBack }: { onBack: () => void }) {
     lastName: '',
     middleName: '',
     section: '12 GAS',
-    field: 'Health',
-    course: 'Nursing',
-    deploymentArea: '',
+    course: 'Nursing', // Default
+    field: 'Health',   // Auto-set
+    deploymentArea: 'RHU San Jose', // Default
+    schoolName: '', // Para sa Education
     password: ''
   })
+
+  // Kapag nagbago ang Course, awtomatikong magbabago ang Field at Deployment Area
+  useEffect(() => {
+    const selectedField = COURSE_TO_FIELD[formData.course]
+    setFormData(prev => {
+      // Kunin ang unang area sa listahan ng bagong field (kung meron)
+      const availableAreas = FIELD_TO_AREAS[selectedField]
+      const newArea = availableAreas && availableAreas.length > 0 ? availableAreas[0] : ''
+      
+      return {
+        ...prev,
+        field: selectedField,
+        deploymentArea: newArea,
+        schoolName: '' // Reset school kung magbabago ng field
+      }
+    })
+  }, [formData.course])
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -56,6 +91,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
     setLoading(true)
 
     try {
+      // 1. Check kung existing na ang LRN
       const { data: existing } = await supabase
         .from('students')
         .select('lrn')
@@ -64,6 +100,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
         
       if (existing) throw new Error('Ang LRN na ito ay rehistrado na. Pakisubukang mag-login.')
 
+      // 2. Gumawa ng Supabase Auth account
       const { error: authError } = await supabase.auth.signUp({
         email: `${formData.lrn}@student.local`,
         password: formData.password,
@@ -71,6 +108,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
 
       if (authError) throw new Error('May error sa paggawa ng account: ' + authError.message)
 
+      // 3. I-save sa students table (Status: Pending)
       const { error: dbError } = await supabase.from('students').insert({
         lrn: formData.lrn,
         first_name: formData.firstName,
@@ -79,7 +117,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
         section: formData.section,
         field: formData.field,
         course: formData.course,
-        deployment_area: formData.deploymentArea,
+        deployment_area: formData.deploymentArea || formData.schoolName, // Kung School, yun ang gagamitin
         password_hash: formData.password,
         status: 'Pending'
       })
@@ -96,14 +134,10 @@ export default function Register({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const handleFieldChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedField = e.target.value
-    setFormData({
-      ...formData, 
-      field: selectedField,
-      course: COURSES[selectedField as keyof typeof COURSES][0] // Reset course sa unang option ng field
-    })
-  }
+  // Kunin ang listahan ng courses at areas
+  const availableCourses = Object.keys(COURSE_TO_FIELD)
+  const availableAreas = FIELD_TO_AREAS[formData.field] || []
+  const isEducation = formData.field === 'Education'
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 py-8">
@@ -142,6 +176,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
             <input type="text" value={formData.middleName} onChange={e => setFormData({...formData, middleName: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
 
+          {/* SECTION AT COURSE */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
@@ -151,26 +186,37 @@ export default function Register({ onBack }: { onBack: () => void }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Field</label>
-              <select value={formData.field} onChange={handleFieldChange} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                {FIELDS.map(f => <option key={f} value={f}>{f}</option>)}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Course (Pumili muna)</label>
+              <select value={formData.course} onChange={e => setFormData({...formData, course: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                {availableCourses.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
 
+          {/* FIELD AT DEPLOYMENT AREA / SCHOOL */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
-              <select value={formData.course} onChange={e => setFormData({...formData, course: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                {COURSES[formData.field as keyof typeof COURSES].map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Field (Auto-filled)</label>
+              <input type="text" readOnly value={formData.field} className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-600 outline-none cursor-not-allowed" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Deployment Area</label>
-              <select required value={formData.deploymentArea} onChange={e => setFormData({...formData, deploymentArea: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                <option value="" disabled>Select Area</option>
-                {DEPLOYMENT_AREAS.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
+              {isEducation ? (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">School (Para sa Education)</label>
+                  <select required value={formData.schoolName} onChange={e => setFormData({...formData, schoolName: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="" disabled>Select School</option>
+                    {SCHOOLS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Deployment Area</label>
+                  <select required value={formData.deploymentArea} onChange={e => setFormData({...formData, deploymentArea: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="" disabled>Select Area</option>
+                    {availableAreas.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </>
+              )}
             </div>
           </div>
 
