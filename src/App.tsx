@@ -12,7 +12,6 @@ function AppContent() {
     return <Login />
   }
 
-  // Temporary Dashboard para makita natin kung pumasok
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-md mx-auto bg-white p-6 rounded-xl shadow-md mt-10 text-center">
