@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface Student {
@@ -8,6 +8,10 @@ interface Student {
   first_name: string;
   last_name: string;
   section: string;
+  status: string;
+  field: string;
+  course: string;
+  deployment_area: string;
 }
 
 interface AttendanceRecord {
@@ -33,10 +37,11 @@ export default function TeacherDashboard() {
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [activeTab, setActiveTab] = useState<'directory' | 'approvals'>('directory')
   
   // Modal States
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
-  const [activeTab, setActiveTab] = useState<'attendance' | 'diary'>('attendance')
+  const [modalTab, setModalTab] = useState<'attendance' | 'diary'>('attendance')
   
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([])
   const [diary, setDiary] = useState<DiaryRecord[]>([])
@@ -45,20 +50,46 @@ export default function TeacherDashboard() {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [selectedDiaryEntry, setSelectedDiaryEntry] = useState<DiaryRecord | null>(null)
 
+  const fetchStudents = async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .order('last_name', { ascending: true })
+    
+    if (!error && data) setStudents(data)
+    setLoading(false)
+  }
+
   useEffect(() => {
-    const fetchStudents = async () => {
-      const { data, error } = await supabase
-        .from('students')
-        .select('lrn, first_name, last_name, section')
-        .order('last_name', { ascending: true })
-      
-      if (!error && data) setStudents(data)
-      setLoading(false)
-    }
     fetchStudents()
   }, [])
 
-  const filteredStudents = students.filter(s => 
+  const handleApprove = async (lrn: string) => {
+    const { error } = await supabase
+      .from('students')
+      .update({ status: 'Approved' })
+      .eq('lrn', lrn)
+    
+    if (!error) fetchStudents()
+    else alert("Error sa pag-approve: " + error.message)
+  }
+
+  const handleReject = async (lrn: string) => {
+    if (!confirm("Sigurado ka bang gusto mong i-reject ito?")) return
+    const { error } = await supabase
+      .from('students')
+      .update({ status: 'Rejected' })
+      .eq('lrn', lrn)
+    
+    if (!error) fetchStudents()
+    else alert("Error sa pag-reject: " + error.message)
+  }
+
+  const approvedStudents = students.filter(s => s.status === 'Approved')
+  const pendingStudents = students.filter(s => s.status === 'Pending')
+
+  const filteredStudents = approvedStudents.filter(s => 
     s.last_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     s.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.lrn.includes(searchTerm)
@@ -66,29 +97,18 @@ export default function TeacherDashboard() {
 
   const handleViewRecord = async (student: Student) => {
     setSelectedStudent(student)
-    setActiveTab('attendance') // Default tab
+    setModalTab('attendance')
     setLoadingRecords(true)
     
-    // Fetch Attendance
-    const { data: attData } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('lrn', student.lrn)
-      .order('date', { ascending: true })
+    const { data: attData } = await supabase.from('attendance').select('*').eq('lrn', student.lrn).order('date', { ascending: true })
     if (attData) setAttendance(attData)
 
-    // Fetch Diary
-    const { data: diaryData } = await supabase
-      .from('diary')
-      .select('*')
-      .eq('lrn', student.lrn)
-      .order('day_number', { ascending: true })
+    const { data: diaryData } = await supabase.from('diary').select('*').eq('lrn', student.lrn).order('day_number', { ascending: true })
     if (diaryData) setDiary(diaryData)
     
     setLoadingRecords(false)
   }
 
-  // === COMPUTE HOURS ===
   const computeHours = (timeIn: string, timeOut: string) => {
     if (!timeIn || !timeOut) return 0;
     try {
@@ -104,15 +124,13 @@ export default function TeacherDashboard() {
 
   const calculateTotalHours = () => {
     let total = 0
-    attendance.forEach(rec => {
-      total += parseFloat(computeHours(rec.time_in, rec.time_out))
-    })
+    attendance.forEach(rec => { total += parseFloat(computeHours(rec.time_in, rec.time_out)) })
     return total.toFixed(2)
   }
 
   const handleExportDTR = () => {
     if (!selectedStudent || attendance.length === 0) return
-    let csvContent = `DAILY TIME RECORD\nName: ${selectedStudent.last_name}, ${selectedStudent.first_name}\nSection: ${selectedStudent.section}\nLRN: ${selectedStudent.lrn}\n\n`
+    let csvContent = `DAILY TIME RECORD\nName: ${selectedStudent.last_name}, ${selectedStudent.first_name}\nSection: ${selectedStudent.section}\nField: ${selectedStudent.field}\nCourse: ${selectedStudent.course}\nArea: ${selectedStudent.deployment_area}\nLRN: ${selectedStudent.lrn}\n\n`
     csvContent += "Day,Date,AM Arrival,AM Departure,PM Arrival,PM Departure,Undertime (Hrs),Total Hours\n"
     let grandTotal = 0;
 
@@ -138,11 +156,8 @@ export default function TeacherDashboard() {
           if (tOut[0] < 13) amDeparture = formattedOut;
         }
         if (tIn[0] >= 12 || tOut[0] >= 13) {
-          if (tIn[0] < 12 && tOut[0] >= 13) {
-             amDeparture = "12:00 PM"; pmArrival = "01:00 PM";
-          } else if (tIn[0] >= 12) {
-             pmArrival = formattedIn;
-          }
+          if (tIn[0] < 12 && tOut[0] >= 13) { amDeparture = "12:00 PM"; pmArrival = "01:00 PM"; } 
+          else if (tIn[0] >= 12) { pmArrival = formattedIn; }
           pmDeparture = formattedOut;
         }
       }
@@ -176,91 +191,149 @@ export default function TeacherDashboard() {
       </div>
 
       <div className="max-w-5xl mx-auto p-4 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
-            <div className="bg-blue-100 text-blue-600 p-3 rounded-lg"><Users size={24} /></div>
-            <div><p className="text-sm text-gray-500">Total Students</p><p className="text-2xl font-bold text-gray-800">{students.length}</p></div>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
-            <div className="bg-green-100 text-green-600 p-3 rounded-lg"><CalendarCheck size={24} /></div>
-            <div><p className="text-sm text-gray-500">Sections</p><p className="text-2xl font-bold text-gray-800">12 GAS & 12 HUMSS</p></div>
-          </div>
+        
+        {/* TABS */}
+        <div className="flex gap-2 border-b border-gray-300">
+          <button 
+            onClick={() => setActiveTab('directory')}
+            className={`px-4 py-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'directory' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            <Users size={16} /> Student Directory
+          </button>
+          <button 
+            onClick={() => setActiveTab('approvals')}
+            className={`px-4 py-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'approvals' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            <UserPlus size={16} /> Approvals 
+            {pendingStudents.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length}</span>}
+          </button>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-            <h2 className="font-bold text-gray-800">Student Directory</h2>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-              <input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64" />
+        {/* DIRECTORY TAB */}
+        {activeTab === 'directory' && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+                <div className="bg-blue-100 text-blue-600 p-3 rounded-lg"><Users size={24} /></div>
+                <div><p className="text-sm text-gray-500">Approved Students</p><p className="text-2xl font-bold text-gray-800">{approvedStudents.length}</p></div>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+                <div className="bg-green-100 text-green-600 p-3 rounded-lg"><CalendarCheck size={24} /></div>
+                <div><p className="text-sm text-gray-500">Sections</p><p className="text-2xl font-bold text-gray-800">12 GAS & 12 HUMSS</p></div>
+              </div>
             </div>
-          </div>
-          
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading students...</div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="bg-white border-b border-gray-200 text-gray-500">
-                <tr>
-                  <th className="px-6 py-3 font-medium">LRN</th>
-                  <th className="px-6 py-3 font-medium">Name</th>
-                  <th className="px-6 py-3 font-medium">Section</th>
-                  <th className="px-6 py-3 font-medium text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredStudents.map(student => (
-                  <tr key={student.lrn} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-mono text-gray-600">{student.lrn}</td>
-                    <td className="px-6 py-4 font-medium text-gray-800">{student.last_name}, {student.first_name}</td>
-                    <td className="px-6 py-4"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{student.section}</span></td>
-                    <td className="px-6 py-4 text-right">
-                      <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-medium text-sm">View Record</button>
-                    </td>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h2 className="font-bold text-gray-800">Student Directory</h2>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64" />
+                </div>
+              </div>
+              
+              {loading ? (
+                <div className="p-8 text-center text-gray-500">Loading students...</div>
+              ) : (
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-white border-b border-gray-200 text-gray-500">
+                    <tr>
+                      <th className="px-6 py-3 font-medium">LRN</th>
+                      <th className="px-6 py-3 font-medium">Name</th>
+                      <th className="px-6 py-3 font-medium">Section</th>
+                      <th className="px-6 py-3 font-medium">Field & Course</th>
+                      <th className="px-6 py-3 font-medium text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredStudents.map(student => (
+                      <tr key={student.lrn} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 font-mono text-gray-600">{student.lrn}</td>
+                        <td className="px-6 py-4 font-medium text-gray-800">{student.last_name}, {student.first_name}</td>
+                        <td className="px-6 py-4"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{student.section}</span></td>
+                        <td className="px-6 py-4 text-gray-600 text-xs">
+                          {student.field} <br/> {student.course}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-medium text-sm">View Record</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* APPROVALS TAB */}
+        {activeTab === 'approvals' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-4 border-b border-gray-200 bg-gray-50">
+              <h2 className="font-bold text-gray-800">Pending Student Registrations</h2>
+            </div>
+            
+            {pendingStudents.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Walang pending na estudyante.</div>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead className="bg-white border-b border-gray-200 text-gray-500">
+                  <tr>
+                    <th className="px-6 py-3 font-medium">LRN</th>
+                    <th className="px-6 py-3 font-medium">Name</th>
+                    <th className="px-6 py-3 font-medium">Section</th>
+                    <th className="px-6 py-3 font-medium">Field & Course</th>
+                    <th className="px-6 py-3 font-medium text-right">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pendingStudents.map(student => (
+                    <tr key={student.lrn} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 font-mono text-gray-600">{student.lrn}</td>
+                      <td className="px-6 py-4 font-medium text-gray-800">{student.last_name}, {student.first_name}</td>
+                      <td className="px-6 py-4"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{student.section}</span></td>
+                      <td className="px-6 py-4 text-gray-600 text-xs">
+                        {student.field} <br/> {student.course}
+                      </td>
+                      <td className="px-6 py-4 text-right flex justify-end gap-2">
+                        <button onClick={() => handleApprove(student.lrn)} className="text-green-600 hover:text-green-800 font-medium text-sm flex items-center gap-1 bg-green-50 px-3 py-1 rounded">
+                          <CheckCircle size={16} /> Approve
+                        </button>
+                        <button onClick={() => handleReject(student.lrn)} className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center gap-1 bg-red-50 px-3 py-1 rounded">
+                          <XCircle size={16} /> Reject
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* MODAL WITH TABS */}
+      {/* Student Modal */}
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-            
-            {/* Header */}
             <div className="p-6 border-b border-gray-100 flex justify-between items-start">
               <div>
                 <h3 className="text-lg font-bold text-gray-800">Student Records</h3>
                 <p className="text-sm text-gray-500">{selectedStudent.last_name}, {selectedStudent.first_name} ({selectedStudent.lrn})</p>
+                <p className="text-xs text-blue-600 font-medium mt-1">
+                  {selectedStudent.field} | {selectedStudent.course} | {selectedStudent.deployment_area}
+                </p>
               </div>
               <button onClick={() => setSelectedStudent(null)} className="text-gray-400 hover:text-gray-600 p-2"><X size={24} /></button>
             </div>
 
-            {/* Tabs */}
             <div className="flex border-b border-gray-100 px-6">
-              <button 
-                onClick={() => setActiveTab('attendance')}
-                className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'attendance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-              >
-                <CalendarCheck size={16} /> Attendance (DTR)
-              </button>
-              <button 
-                onClick={() => setActiveTab('diary')}
-                className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'diary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-              >
-                <BookOpen size={16} /> Daily Diary
-              </button>
+              <button onClick={() => setModalTab('attendance')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${modalTab === 'attendance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><CalendarCheck size={16} /> Attendance (DTR)</button>
+              <button onClick={() => setModalTab('diary')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${modalTab === 'diary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><BookOpen size={16} /> Daily Diary</button>
             </div>
 
-            {/* Content Body */}
             <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
-              {loadingRecords ? (
-                <div className="text-center py-10 text-gray-500">Loading records...</div>
-              ) : activeTab === 'attendance' ? (
-                // ATTENDANCE TAB
+              {loadingRecords ? <div className="text-center py-10 text-gray-500">Loading records...</div> : modalTab === 'attendance' ? (
                 attendance.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang attendance record.</div> : (
                   <>
                     <div className="mb-4 bg-white p-4 rounded-lg flex justify-between items-center shadow-sm border border-gray-200">
@@ -270,13 +343,7 @@ export default function TeacherDashboard() {
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                       <table className="w-full text-left text-sm">
                         <thead className="bg-gray-50 text-gray-500">
-                          <tr>
-                            <th className="px-4 py-3 font-medium">Date</th>
-                            <th className="px-4 py-3 font-medium">Time In</th>
-                            <th className="px-4 py-3 font-medium">Time Out</th>
-                            <th className="px-4 py-3 font-medium">Photos</th>
-                            <th className="px-4 py-3 font-medium text-right">Total</th>
-                          </tr>
+                          <tr><th className="px-4 py-3 font-medium">Date</th><th className="px-4 py-3 font-medium">Time In</th><th className="px-4 py-3 font-medium">Time Out</th><th className="px-4 py-3 font-medium">Photos</th><th className="px-4 py-3 font-medium text-right">Total</th></tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {attendance.map(rec => (
@@ -297,21 +364,13 @@ export default function TeacherDashboard() {
                   </>
                 )
               ) : (
-                // DIARY TAB
-                diary.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang diary entry si {selectedStudent.first_name}.</div> : (
+                diary.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang diary entry.</div> : (
                   <div className="space-y-3">
                     {diary.map(entry => (
                       <div key={entry.id} onClick={() => setSelectedDiaryEntry(entry)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 cursor-pointer transition-all">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="font-bold text-blue-600">Day {entry.day_number}</span>
-                          <span className="text-xs text-gray-500">{entry.date}</span>
-                        </div>
+                        <div className="flex justify-between items-center mb-2"><span className="font-bold text-blue-600">Day {entry.day_number}</span><span className="text-xs text-gray-500">{entry.date}</span></div>
                         <p className="text-sm text-gray-700 line-clamp-2">{entry.entry_text}</p>
-                        {entry.image_urls?.length > 0 && (
-                          <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                            <ImageIcon size={14} /> {entry.image_urls.length} image(s) attached
-                          </div>
-                        )}
+                        {entry.image_urls?.length > 0 && <div className="mt-3 flex items-center gap-2 text-xs text-gray-500"><ImageIcon size={14} /> {entry.image_urls.length} image(s)</div>}
                       </div>
                     ))}
                   </div>
@@ -319,46 +378,35 @@ export default function TeacherDashboard() {
               )}
             </div>
 
-            {/* Footer */}
             <div className="p-4 border-t border-gray-100 bg-white flex justify-end gap-3 rounded-b-2xl">
               <button onClick={() => setSelectedStudent(null)} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors">Close</button>
-              {activeTab === 'attendance' && (
-                <button onClick={handleExportDTR} disabled={attendance.length === 0} className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-medium rounded-lg transition-colors flex items-center gap-2">
-                  <Download size={16} /> Export DTR
-                </button>
+              {modalTab === 'attendance' && (
+                <button onClick={handleExportDTR} disabled={attendance.length === 0} className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-medium rounded-lg transition-colors flex items-center gap-2"><Download size={16} /> Export DTR</button>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Photo Viewer Modal */}
       {selectedPhoto && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
           <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-lg object-contain" />
         </div>
       )}
 
-      {/* Full Diary Viewer Modal */}
       {selectedDiaryEntry && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[70]">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
             <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-gray-800">Day {selectedDiaryEntry.day_number} Diary</h3>
-                <p className="text-xs text-gray-500">{selectedDiaryEntry.date}</p>
-              </div>
+              <div><h3 className="font-bold text-gray-800">Day {selectedDiaryEntry.day_number} Diary</h3><p className="text-xs text-gray-500">{selectedDiaryEntry.date}</p></div>
               <button onClick={() => setSelectedDiaryEntry(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
             <div className="p-6 overflow-y-auto">
               <p className="text-gray-700 whitespace-pre-wrap mb-4">{selectedDiaryEntry.entry_text}</p>
-              
               {selectedDiaryEntry.image_urls?.length > 0 && (
                 <div className="space-y-2 mt-4 pt-4 border-t border-gray-100">
                   <p className="text-sm font-medium text-gray-500 mb-2">Attached Images:</p>
-                  {selectedDiaryEntry.image_urls.map((url, i) => (
-                    <img key={i} src={url} alt="Diary" className="w-full rounded-lg border border-gray-200" />
-                  ))}
+                  {selectedDiaryEntry.image_urls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-lg border border-gray-200" />)}
                 </div>
               )}
             </div>
