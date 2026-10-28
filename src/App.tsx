@@ -1,15 +1,44 @@
+import { AuthProvider, useAuth } from './context/AuthContext'
+import Login from './pages/Login'
+
+function AppContent() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>
+  }
+
+  if (!user) {
+    return <Login />
+  }
+
+  // Temporary Dashboard para makita natin kung pumasok
+  return (
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-md mx-auto bg-white p-6 rounded-xl shadow-md mt-10 text-center">
+        <h1 className="text-2xl font-bold text-green-600 mb-2">Login Successful!</h1>
+        <p className="text-gray-600 mb-4">Welcome, <span className="font-bold">{user.name}</span></p>
+        <p className="text-sm text-gray-500 mb-6">Role: {user.role} | ID: {user.id}</p>
+        
+        <button 
+          onClick={() => {
+            localStorage.removeItem('wi_user');
+            window.location.reload();
+          }}
+          className="bg-red-500 text-white px-6 py-2 rounded-lg"
+        >
+          Logout
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function App() {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full text-center">
-        <h1 className="text-2xl font-bold text-blue-600 mb-4">Work Immersion PWA</h1>
-        <p className="text-gray-600 mb-6">Successfully connected to GitHub and Vercel!</p>
-        <div className="bg-green-100 text-green-700 p-4 rounded-lg font-mono text-sm">
-          Status: Ready for Phase 2
-        </div>
-      </div>
-    </div>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   )
 }
 
