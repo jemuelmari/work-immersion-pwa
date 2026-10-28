@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface Student {
@@ -10,11 +10,24 @@ interface Student {
   section: string;
 }
 
+interface AttendanceRecord {
+  id: string;
+  date: string;
+  time_in: string;
+  time_out: string;
+  total_hours: number;
+}
+
 export default function TeacherDashboard() {
   const { user, logout } = useAuth()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  
+  // Modal states
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([])
+  const [loadingAttendance, setLoadingAttendance] = useState(false)
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -37,8 +50,49 @@ export default function TeacherDashboard() {
     s.lrn.includes(searchTerm)
   )
 
+  // Function para tingnan ang attendance
+  const handleViewRecord = async (student: Student) => {
+    setSelectedStudent(student)
+    setLoadingAttendance(true)
+    
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('lrn', student.lrn)
+      .order('date', { ascending: true })
+      
+    if (!error && data) {
+      setAttendance(data)
+    }
+    setLoadingAttendance(false)
+  }
+
+  // Function para mag-export ng CSV (Para sa Excel / DepEd Form 48)
+  const handleExportDTR = () => {
+    if (!selectedStudent || attendance.length === 0) return
+
+    // Header ng CSV
+    let csvContent = "LRN,Name,Section,Date,Time In,Time Out,Total Hours\n"
+    
+    // Data rows
+    attendance.forEach(rec => {
+      csvContent += `${selectedStudent.lrn},"${selectedStudent.last_name}, ${selectedStudent.first_name}",${selectedStudent.section},${rec.date},${rec.time_in || ''},${rec.time_out || ''},${rec.total_hours || 0}\n`
+    })
+
+    // Pag-download ng file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", `DTR_${selectedStudent.last_name}_${selectedStudent.first_name}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 relative">
       {/* Top Navbar */}
       <div className="bg-blue-600 text-white p-4 sticky top-0 z-10 shadow-md">
         <div className="max-w-5xl mx-auto flex justify-between items-center">
@@ -112,7 +166,12 @@ export default function TeacherDashboard() {
                       <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{student.section}</span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="text-blue-600 hover:text-blue-800 font-medium text-sm">View Record</button>
+                      <button 
+                        onClick={() => handleViewRecord(student)}
+                        className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                      >
+                        View Record
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -126,6 +185,72 @@ export default function TeacherDashboard() {
           )}
         </div>
       </div>
+
+      {/* MODAL: Student Attendance Record */}
+      {selectedStudent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            
+            {/* Modal Header */}
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">Attendance Record</h3>
+                <p className="text-sm text-gray-500">{selectedStudent.last_name}, {selectedStudent.first_name} ({selectedStudent.lrn})</p>
+              </div>
+              <button onClick={() => setSelectedStudent(null)} className="text-gray-400 hover:text-gray-600 p-2">
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {loadingAttendance ? (
+                <div className="text-center py-10 text-gray-500">Loading records...</div>
+              ) : attendance.length === 0 ? (
+                <div className="text-center py-10 text-gray-500">Wala pang record si {selectedStudent.first_name}.</div>
+              ) : (
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3 font-medium rounded-l-lg">Date</th>
+                      <th className="px-4 py-3 font-medium">Time In</th>
+                      <th className="px-4 py-3 font-medium">Time Out</th>
+                      <th className="px-4 py-3 font-medium text-right rounded-r-lg">Total Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {attendance.map(rec => (
+                      <tr key={rec.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-gray-700 font-medium">{rec.date}</td>
+                        <td className="px-4 py-3 text-gray-600">{rec.time_in || '-'}</td>
+                        <td className="px-4 py-3 text-gray-600">{rec.time_out || '-'}</td>
+                        <td className="px-4 py-3 text-gray-800 font-bold text-right">{rec.total_hours || 0} hrs</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-2xl">
+              <button 
+                onClick={() => setSelectedStudent(null)}
+                className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+              <button 
+                onClick={handleExportDTR}
+                disabled={attendance.length === 0}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+              >
+                <Download size={16} /> Export DTR (CSV)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
