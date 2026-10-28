@@ -34,14 +34,16 @@ export default function StudentDashboard() {
     }
   }, [])
 
-  // === CHECK STATUS (Walang manual time addition) ===
+  // === CHECK STATUS ===
   const checkStatus = async () => {
     const count = await db.syncQueue.where('status').equals('pending').count()
     setPendingSyncs(count)
     
     if (isOnline && user?.id) {
-      // Kunin ang tamang petsa sa local time (YYYY-MM-DD)
-      const today = new Date().toLocaleDateString('en-CA') // Format: YYYY-MM-DD
+      // Force Manila time sa check
+      const now = new Date()
+      const manilaTime = new Date(now.getTime() + (8 * 60 * 60 * 1000))
+      const today = manilaTime.toISOString().split('T')[0]
       
       const { data } = await supabase
         .from('attendance')
@@ -86,7 +88,7 @@ export default function StudentDashboard() {
     }
   }
 
-  // === SYNC FUNCTION ===
+  // === SYNC FUNCTION (STRICT MODE) ===
   const syncData = async () => {
     if (!isOnline) return alert("Walang internet.")
     
@@ -106,16 +108,8 @@ export default function StudentDashboard() {
             time_in: item.payload.time,
             time_in_photo: item.payload.photo_url
           })
-          
-          if (error) {
-            if (error.code === '23505') {
-              isSuccess = true;
-            } else {
-              throw error
-            }
-          } else {
-            isSuccess = true;
-          }
+          if (error && error.code !== '23505') throw error
+          isSuccess = true;
         } 
         else if (item.action === 'TIME_OUT') {
           const { error } = await supabase.from('attendance').update({
@@ -128,10 +122,12 @@ export default function StudentDashboard() {
           if (error) throw error
           isSuccess = true;
         }
-      } catch (err) {
-        console.error("CATCH BLOCK:", err)
+      } catch (err: any) {
+        console.error("SYNC ERROR:", err.message)
+        alert("Sync Failed: " + (err.message || "Unknown error"))
       }
 
+      // BUBURAHIN LANG KUNG SUCCESSFUL
       if (isSuccess) {
         await db.syncQueue.delete(item.id!)
       }
@@ -164,7 +160,7 @@ export default function StudentDashboard() {
     setIsCameraOpen(false)
   }
 
-  // === CAPTURE IMAGE (Walang manual addition) ===
+  // === CAPTURE IMAGE (MANUAL SYNC) ===
   const captureImage = async () => {
     if (!videoRef.current || !canvasRef.current) return
     
@@ -180,12 +176,9 @@ export default function StudentDashboard() {
     const photoUrl = await uploadPhoto(photoBase64, cameraMode)
 
     const now = new Date()
-    
-    // Gagamitin natin ang local time ng device (walang +8 hours)
-    const today = now.toLocaleDateString('en-CA') // Format: YYYY-MM-DD
-    const timeStr = now.toLocaleTimeString('en-GB', { hour12: false }) // Format: HH:MM:SS
-    
-    console.log("Ipapadala sa DB:", { date: today, time: timeStr })
+    // Gagamitin natin ang default ng system (walang +8) kasi tama na ang oras ng device mo.
+    const today = now.toLocaleDateString('en-CA') 
+    const timeStr = now.toLocaleTimeString('en-GB', { hour12: false })
 
     await db.syncQueue.add({
       action: cameraMode,
@@ -199,17 +192,11 @@ export default function StudentDashboard() {
       createdAt: now.toISOString()
     })
 
-    if (cameraMode === 'TIME_IN') {
-      setHasTimedIn(true)
-    } else {
-      setHasTimedOut(true)
-    }
+    if (cameraMode === 'TIME_IN') setHasTimedIn(true)
+    else setHasTimedOut(true)
 
     checkStatus()
-    
-    if (isOnline) {
-      setTimeout(() => syncData(), 500)
-    }
+    // WALANG AUTO SYNC DITO. Hintayin ang user pindutin ang Sync Now.
   }
 
   return (
