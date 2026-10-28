@@ -34,16 +34,14 @@ export default function StudentDashboard() {
     }
   }, [])
 
-  // === CHECK STATUS (May Manila Time Fix) ===
+  // === CHECK STATUS (Walang manual time addition) ===
   const checkStatus = async () => {
     const count = await db.syncQueue.where('status').equals('pending').count()
     setPendingSyncs(count)
     
     if (isOnline && user?.id) {
-      // Force Manila Time para tama ang pag-check ng date
-      const now = new Date()
-      const manilaTime = new Date(now.getTime() + (8 * 60 * 60 * 1000))
-      const today = manilaTime.toISOString().split('T')[0]
+      // Kunin ang tamang petsa sa local time (YYYY-MM-DD)
+      const today = new Date().toLocaleDateString('en-CA') // Format: YYYY-MM-DD
       
       const { data } = await supabase
         .from('attendance')
@@ -88,9 +86,9 @@ export default function StudentDashboard() {
     }
   }
 
-  // === SYNC FUNCTION (Bulletproof) ===
+  // === SYNC FUNCTION ===
   const syncData = async () => {
-    if (!isOnline) return alert("Walang internet. Hintayin bumalik ang connection.")
+    if (!isOnline) return alert("Walang internet.")
     
     const pendingItems = await db.syncQueue.where('status').equals('pending').toArray()
     if (pendingItems.length === 0) return
@@ -111,10 +109,8 @@ export default function StudentDashboard() {
           
           if (error) {
             if (error.code === '23505') {
-              console.log("Duplicate Time-In, treating as success.")
               isSuccess = true;
             } else {
-              console.error("SUPABASE ERROR (TIME_IN):", error.message, error.code)
               throw error
             }
           } else {
@@ -129,21 +125,15 @@ export default function StudentDashboard() {
           .eq('lrn', item.payload.lrn)
           .eq('date', item.payload.date)
           
-          if (error) {
-            console.error("SUPABASE ERROR (TIME_OUT):", error.message, error.code)
-            throw error
-          }
+          if (error) throw error
           isSuccess = true;
         }
       } catch (err) {
         console.error("CATCH BLOCK:", err)
       }
 
-      // Buburahin lang kung totoong successful
       if (isSuccess) {
         await db.syncQueue.delete(item.id!)
-      } else {
-        console.warn("Sync failed, keeping in queue:", item.id)
       }
     }
     
@@ -174,7 +164,7 @@ export default function StudentDashboard() {
     setIsCameraOpen(false)
   }
 
-  // === CAPTURE IMAGE (May Manila Time Fix) ===
+  // === CAPTURE IMAGE (Walang manual addition) ===
   const captureImage = async () => {
     if (!videoRef.current || !canvasRef.current) return
     
@@ -191,12 +181,11 @@ export default function StudentDashboard() {
 
     const now = new Date()
     
-    // I-FORCE ANG PHILIPPINE TIME (UTC+8)
-    const manilaTime = new Date(now.getTime() + (8 * 60 * 60 * 1000))
-    const today = manilaTime.toISOString().split('T')[0]
-    const timeStr = manilaTime.toLocaleTimeString('en-GB', { hour12: false })
+    // Gagamitin natin ang local time ng device (walang +8 hours)
+    const today = now.toLocaleDateString('en-CA') // Format: YYYY-MM-DD
+    const timeStr = now.toLocaleTimeString('en-GB', { hour12: false }) // Format: HH:MM:SS
     
-    console.log("Oras na ipapadala sa Supabase:", timeStr)
+    console.log("Ipapadala sa DB:", { date: today, time: timeStr })
 
     await db.syncQueue.add({
       action: cameraMode,
