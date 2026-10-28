@@ -9,15 +9,12 @@ export default function StudentDashboard() {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [time, setTime] = useState(new Date())
   
-  // States para sa Time In / Time Out
   const [hasTimedIn, setHasTimedIn] = useState(false)
   const [hasTimedOut, setHasTimedOut] = useState(false)
-  const [timeInRecord, setTimeInRecord] = useState<any>(null)
   
   const [pendingSyncs, setPendingSyncs] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
 
-  // Camera states
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isCameraOpen, setIsCameraOpen] = useState(false)
@@ -37,12 +34,11 @@ export default function StudentDashboard() {
     }
   }, [])
 
-  // I-check kung may pending syncs at kung naka-time in na ba ngayon
+  // === CHECK STATUS ===
   const checkStatus = async () => {
     const count = await db.syncQueue.where('status').equals('pending').count()
     setPendingSyncs(count)
     
-    // Check today's record kung may time-in na
     if (isOnline && user?.id) {
       const today = new Date().toISOString().split('T')[0]
       const { data } = await supabase
@@ -54,7 +50,6 @@ export default function StudentDashboard() {
       
       if (data) {
         setHasTimedIn(true)
-        setTimeInRecord(data)
         if (data.time_out) setHasTimedOut(true)
       }
     }
@@ -64,21 +59,20 @@ export default function StudentDashboard() {
     checkStatus()
   }, [isOnline, hasTimedIn, hasTimedOut])
 
-  // === UPLOAD IMAGE SA SUPABASE STORAGE ===
+  // === UPLOAD IMAGE ===
   const uploadPhoto = async (base64Data: string, action: string) => {
-    if (!isOnline) return base64Data // Kung offline, i-save muna ang Base64 text
+    if (!isOnline) return base64Data
     
     try {
       const fileName = `${user?.id}/${new Date().getTime()}_${action}.jpg`
       const blob = await (await fetch(base64Data)).blob()
       
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('attendance_photos')
         .upload(fileName, blob, { contentType: 'image/jpeg' })
       
       if (error) throw error
       
-      // Kunin ang public URL
       const { data: urlData } = supabase.storage
         .from('attendance_photos')
         .getPublicUrl(fileName)
@@ -86,13 +80,13 @@ export default function StudentDashboard() {
       return urlData.publicUrl
     } catch (err) {
       console.error("Upload error:", err)
-      return base64Data // Fallback sa Base64 kung mag-fail
+      return base64Data
     }
   }
 
-  // === SYNC FUNCTION ===
+  // === SYNC FUNCTION (BULLETPROOF) ===
   const syncData = async () => {
-    if (!isOnline) return alert("Walang internet.")
+    if (!isOnline) return alert("Walang internet. Hintayin bumalik ang connection.")
     
     const pendingItems = await db.syncQueue.where('status').equals('pending').toArray()
     if (pendingItems.length === 0) return
@@ -110,11 +104,21 @@ export default function StudentDashboard() {
             time_in: item.payload.time,
             time_in_photo: item.payload.photo_url
           })
-          if (error && error.code !== '23505') throw error
-          isSuccess = true;
+          
+          if (error) {
+            if (error.code === '23505') {
+              console.log("Duplicate Time-In, treating as success.")
+              isSuccess = true;
+            } else {
+              console.error("SUPABASE ERROR (TIME_IN):", error.message, error.code)
+              throw error
+            }
+          } else {
+            isSuccess = true;
+          }
         } 
         else if (item.action === 'TIME_OUT') {
-          // Update lang natin yung existing record para sa Time-Out
+          // Update the existing record
           const { error } = await supabase.from('attendance').update({
             time_out: item.payload.time,
             time_out_photo: item.payload.photo_url
@@ -122,15 +126,21 @@ export default function StudentDashboard() {
           .eq('lrn', item.payload.lrn)
           .eq('date', item.payload.date)
           
-          if (error) throw error
+          if (error) {
+            console.error("SUPABASE ERROR (TIME_OUT):", error.message, error.code)
+            throw error
+          }
           isSuccess = true;
         }
       } catch (err) {
         console.error("CATCH BLOCK:", err)
       }
 
+      // BUBURAHIN LANG KUNG SUCCESSFUL
       if (isSuccess) {
         await db.syncQueue.delete(item.id!)
+      } else {
+        console.warn("Sync failed, keeping in queue:", item.id)
       }
     }
     
@@ -138,7 +148,7 @@ export default function StudentDashboard() {
     checkStatus()
   }
 
-  // === CAMERA LOGIC ===
+  // === CAMERA ===
   const startCamera = async (mode: 'TIME_IN' | 'TIME_OUT') => {
     setCameraMode(mode)
     try {
@@ -170,18 +180,17 @@ export default function StudentDashboard() {
     canvas.height = video.videoHeight
     canvas.getContext('2d')?.drawImage(video, 0, 0)
     
-    // I-compress ang image
     const photoBase64 = canvas.toDataURL('image/jpeg', 0.4)
     stopCamera()
 
-    // I-upload sa Supabase Storage (kung online) o i-save as base64 (kung offline)
     const photoUrl = await uploadPhoto(photoBase64, cameraMode)
 
     const now = new Date()
     const today = now.toISOString().split('T')[0]
-    const timeStr = now.toTimeString().split(' ')[0]
+    
+    // Kukunin natin ang ORAS sa local time ng device
+    const timeStr = now.toLocaleTimeString('en-GB', { hour12: false })
 
-    // I-save sa IndexedDB queue
     await db.syncQueue.add({
       action: cameraMode,
       payload: { 
@@ -201,12 +210,15 @@ export default function StudentDashboard() {
     }
 
     checkStatus()
-    if (isOnline) setTimeout(() => syncData(), 500)
+    
+    // Auto-sync kung online
+    if (isOnline) {
+      setTimeout(() => syncData(), 500)
+    }
   }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
       <div className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-10">
         <div>
           <h1 className="font-bold text-gray-800">Hello, {user?.name.split(' ')[0]}!</h1>
@@ -232,7 +244,6 @@ export default function StudentDashboard() {
           </div>
         )}
 
-        {/* Main Card */}
         <div className="bg-white p-6 rounded-2xl shadow-sm text-center border border-gray-100">
           <div className="text-4xl font-bold text-gray-800 tracking-tight mb-1">
             {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -256,7 +267,6 @@ export default function StudentDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {/* TIME IN BUTTON */}
               {!hasTimedIn && (
                 <button
                   onClick={() => startCamera('TIME_IN')}
@@ -267,7 +277,6 @@ export default function StudentDashboard() {
                 </button>
               )}
 
-              {/* TIME OUT BUTTON */}
               {hasTimedIn && !hasTimedOut && (
                 <button
                   onClick={() => startCamera('TIME_OUT')}
@@ -278,7 +287,6 @@ export default function StudentDashboard() {
                 </button>
               )}
 
-              {/* DONE STATE */}
               {hasTimedIn && hasTimedOut && (
                 <div className="w-full py-4 rounded-xl flex flex-col items-center justify-center gap-2 bg-gray-100 text-gray-400">
                   <CheckCircle size={28} />
@@ -289,7 +297,6 @@ export default function StudentDashboard() {
           )}
         </div>
 
-        {/* Pending Sync Banner */}
         {pendingSyncs > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-center justify-between text-yellow-800 text-sm">
             <div className="flex items-center gap-3">
