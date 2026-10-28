@@ -11,14 +11,12 @@ export default function StudentDashboard() {
   const [hasTimedIn, setHasTimedIn] = useState(false)
   const [pendingSyncs, setPendingSyncs] = useState(0)
   
-  // Camera states
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isCameraOpen, setIsCameraOpen] = useState(false)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
 
-  // Relo at Network Status
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000)
     const handleOnline = () => setIsOnline(true)
@@ -32,7 +30,6 @@ export default function StudentDashboard() {
     }
   }, [])
 
-  // I-check kung may pending syncs sa IndexedDB
   const checkQueue = async () => {
     const count = await db.syncQueue.where('status').equals('pending').count()
     setPendingSyncs(count)
@@ -42,39 +39,52 @@ export default function StudentDashboard() {
     checkQueue()
   }, [hasTimedIn])
 
-  // AUTOMATIC SYNC KAPAG BUMALIK ANG INTERNET
-  useEffect(() => {
-    const syncData = async () => {
-      if (!isOnline) return
-      const pendingItems = await db.syncQueue.where('status').equals('pending').toArray()
-      
-      if (pendingItems.length === 0) return
-      setIsSyncing(true)
-
-      for (const item of pendingItems) {
-        try {
-          if (item.action === 'TIME_IN') {
-            const { error } = await supabase.from('attendance').insert({
-              lrn: item.payload.lrn,
-              date: item.payload.date,
-              time_in: item.payload.time,
-              time_in_photo: item.payload.photo_url
-            })
-            if (error && error.code !== '23505') throw error // 23505 = duplicate (okay lang)
-          }
-          
-          // Kapag success, i-delete sa queue
-          await db.syncQueue.delete(item.id!)
-        } catch (err) {
-          console.error("Sync failed for item", item.id, err)
-        }
-      }
-      
-      setIsSyncing(false)
-      checkQueue()
+  // MANUAL / AUTO SYNC FUNCTION
+  const syncData = async () => {
+    if (!isOnline) {
+      alert("Walang internet. Hintayin bumalik ang connection.")
+      return
     }
+    
+    const pendingItems = await db.syncQueue.where('status').equals('pending').toArray()
+    if (pendingItems.length === 0) return
+    
+    setIsSyncing(true)
 
-    syncData()
+    for (const item of pendingItems) {
+      try {
+        if (item.action === 'TIME_IN') {
+          // Ang insert natin sa Supabase
+          const { error } = await supabase.from('attendance').insert({
+            lrn: item.payload.lrn,
+            date: item.payload.date,
+            time_in: item.payload.time,
+            time_in_photo: item.payload.photo_url
+          })
+          
+          // Kung may error (maliban sa duplicate), i-throw para mahuli
+          if (error && error.code !== '23505') {
+            console.error("Supabase Error:", error)
+            throw error
+          }
+        }
+        
+        // Kapag success, i-delete sa queue
+        await db.syncQueue.delete(item.id!)
+      } catch (err) {
+        console.error("Sync failed for item", item.id, err)
+      }
+    }
+    
+    setIsSyncing(false)
+    checkQueue()
+  }
+
+  // AWTOMATIKONG SYNC KAPAG BUMALIK ANG INTERNET
+  useEffect(() => {
+    if (isOnline) {
+      syncData()
+    }
   }, [isOnline])
 
   // CAMERA LOGIC
@@ -102,17 +112,14 @@ export default function StudentDashboard() {
   const captureAndTimeIn = async () => {
     if (!videoRef.current || !canvasRef.current) return
     
-    // 1. Kunin ang image sa camera
     const video = videoRef.current
     const canvas = canvasRef.current
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     canvas.getContext('2d')?.drawImage(video, 0, 0)
     
-    // I-compress ang image para hindi lumaki ang storage
     const photoBase64 = canvas.toDataURL('image/jpeg', 0.5)
     
-    // 2. I-save sa IndexedDB (Offline)
     const now = new Date()
     const today = now.toISOString().split('T')[0]
     const timeStr = now.toTimeString().split(' ')[0]
@@ -127,11 +134,15 @@ export default function StudentDashboard() {
     setHasTimedIn(true)
     checkQueue()
     stopCamera()
+
+    // Kung online, subukang i-sync agad
+    if (isOnline) {
+      setTimeout(() => syncData(), 500)
+    }
   }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
       <div className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-10">
         <div>
           <h1 className="font-bold text-gray-800">Hello, {user?.name.split(' ')[0]}!</h1>
@@ -145,7 +156,6 @@ export default function StudentDashboard() {
 
       <div className="p-4 max-w-md mx-auto space-y-4">
         
-        {/* Network Status Banner */}
         {!isOnline && (
           <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm text-center border border-red-100">
             Offline ka ngayon. Ang iyong Time-In ay naka-save sa device at awtomatikong ipapadala kapag may internet na.
@@ -158,7 +168,6 @@ export default function StudentDashboard() {
           </div>
         )}
 
-        {/* Relo at Time In Card */}
         <div className="bg-white p-6 rounded-2xl shadow-sm text-center border border-gray-100">
           <div className="text-4xl font-bold text-gray-800 tracking-tight mb-1">
             {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -191,11 +200,19 @@ export default function StudentDashboard() {
           )}
         </div>
 
-        {/* Pending Sync Info */}
         {pendingSyncs > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-center gap-3 text-yellow-800 text-sm">
-            <Clock size={20} className="shrink-0" />
-            <p>May <strong>{pendingSyncs}</strong> kang hindi pa naka-sync. Ito ay awtomatikong ipapadala kapag bumalik ang internet.</p>
+          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-center justify-between text-yellow-800 text-sm">
+            <div className="flex items-center gap-3">
+              <Clock size={20} className="shrink-0" />
+              <p>May <strong>{pendingSyncs}</strong> kang hindi pa naka-sync.</p>
+            </div>
+            <button 
+              onClick={syncData}
+              disabled={!isOnline || isSyncing}
+              className="bg-yellow-200 hover:bg-yellow-300 text-yellow-900 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors disabled:opacity-50"
+            >
+              Sync Now
+            </button>
           </div>
         )}
 
@@ -204,7 +221,6 @@ export default function StudentDashboard() {
         </button>
       </div>
       
-      {/* Hidden canvas for capturing image */}
       <canvas ref={canvasRef} className="hidden" />
     </div>
   )
