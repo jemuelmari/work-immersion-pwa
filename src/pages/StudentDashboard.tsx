@@ -34,13 +34,17 @@ export default function StudentDashboard() {
     }
   }, [])
 
-  // === CHECK STATUS ===
+  // === CHECK STATUS (May Manila Time Fix) ===
   const checkStatus = async () => {
     const count = await db.syncQueue.where('status').equals('pending').count()
     setPendingSyncs(count)
     
     if (isOnline && user?.id) {
-      const today = new Date().toISOString().split('T')[0]
+      // Force Manila Time para tama ang pag-check ng date
+      const now = new Date()
+      const manilaTime = new Date(now.getTime() + (8 * 60 * 60 * 1000))
+      const today = manilaTime.toISOString().split('T')[0]
+      
       const { data } = await supabase
         .from('attendance')
         .select('*')
@@ -84,7 +88,7 @@ export default function StudentDashboard() {
     }
   }
 
-  // === SYNC FUNCTION (BULLETPROOF) ===
+  // === SYNC FUNCTION (Bulletproof) ===
   const syncData = async () => {
     if (!isOnline) return alert("Walang internet. Hintayin bumalik ang connection.")
     
@@ -118,7 +122,6 @@ export default function StudentDashboard() {
           }
         } 
         else if (item.action === 'TIME_OUT') {
-          // Update the existing record
           const { error } = await supabase.from('attendance').update({
             time_out: item.payload.time,
             time_out_photo: item.payload.photo_url
@@ -136,7 +139,7 @@ export default function StudentDashboard() {
         console.error("CATCH BLOCK:", err)
       }
 
-      // BUBURAHIN LANG KUNG SUCCESSFUL
+      // Buburahin lang kung totoong successful
       if (isSuccess) {
         await db.syncQueue.delete(item.id!)
       } else {
@@ -171,6 +174,7 @@ export default function StudentDashboard() {
     setIsCameraOpen(false)
   }
 
+  // === CAPTURE IMAGE (May Manila Time Fix) ===
   const captureImage = async () => {
     if (!videoRef.current || !canvasRef.current) return
     
@@ -186,10 +190,13 @@ export default function StudentDashboard() {
     const photoUrl = await uploadPhoto(photoBase64, cameraMode)
 
     const now = new Date()
-    const today = now.toISOString().split('T')[0]
     
-    // Kukunin natin ang ORAS sa local time ng device
-    const timeStr = now.toLocaleTimeString('en-GB', { hour12: false })
+    // I-FORCE ANG PHILIPPINE TIME (UTC+8)
+    const manilaTime = new Date(now.getTime() + (8 * 60 * 60 * 1000))
+    const today = manilaTime.toISOString().split('T')[0]
+    const timeStr = manilaTime.toLocaleTimeString('en-GB', { hour12: false })
+    
+    console.log("Oras na ipapadala sa Supabase:", timeStr)
 
     await db.syncQueue.add({
       action: cameraMode,
@@ -211,7 +218,6 @@ export default function StudentDashboard() {
 
     checkStatus()
     
-    // Auto-sync kung online
     if (isOnline) {
       setTimeout(() => syncData(), 500)
     }
