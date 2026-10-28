@@ -39,42 +39,48 @@ export default function StudentDashboard() {
     checkQueue()
   }, [hasTimedIn])
 
-  // BULLETPROOF SYNC FUNCTION
+  // MANUAL SYNC LANG MUNA, WALANG AUTO SYNC
   const syncData = async () => {
     if (!isOnline) {
-      alert("Walang internet. Hintayin bumalik ang connection.")
+      alert("Walang internet.")
       return
     }
     
     const pendingItems = await db.syncQueue.where('status').equals('pending').toArray()
-    if (pendingItems.length === 0) return
+    if (pendingItems.length === 0) {
+      alert("Walang naka-queue na data.")
+      return
+    }
     
     setIsSyncing(true)
 
     for (const item of pendingItems) {
+      let isSuccess = false;
+      
       try {
         if (item.action === 'TIME_IN') {
+          console.log("Sinusubukang i-sync ito:", item.payload) // <--- TIGNAN NATIN ITO
           
-          // I-insert sa Supabase (tinanggal muna natin ang photo para ma-isolate ang error)
           const { error } = await supabase.from('attendance').insert({
             lrn: item.payload.lrn,
             date: item.payload.date,
             time_in: item.payload.time
           })
           
-          // KUNG MAY ERROR, IPAKITA SA ALERT PARA MAKITA NATIN
-          if (error && error.code !== '23505') {
-            alert("Supabase Error: " + error.message + " (Code: " + error.code + ")")
+          if (error) {
+            console.error("SUPABASE ERROR:", error.message, "| CODE:", error.code) // <--- DITO LALABAS ANG ERROR
             throw error
           }
+          isSuccess = true;
         }
-        
-        // BUBURAHIN LANG KUNG TALAGANG WALANG ERROR
-        await db.syncQueue.delete(item.id!)
-        
       } catch (err) {
-        console.error("Sync failed", err)
-        // Wag buburahin, para hindi mawala yung Sync Now button
+        console.error("CATCH BLOCK:", err)
+      }
+
+      if (isSuccess) {
+        await db.syncQueue.delete(item.id!)
+      } else {
+        alert("Hindi na-sync. Tingnan ang Console (F12) para sa detalye.")
       }
     }
     
@@ -82,12 +88,12 @@ export default function StudentDashboard() {
     checkQueue()
   }
 
-  // AUTO SYNC KAPAG BUMALIK ANG NET
-  useEffect(() => {
-    if (isOnline) {
-      syncData()
-    }
-  }, [isOnline])
+  // KINOMENTOHAN NATIN ANG AUTO SYNC PARA HINDI AGAD MAWALA
+  // useEffect(() => {
+  //   if (isOnline) {
+  //     syncData()
+  //   }
+  // }, [isOnline])
 
   const startCamera = async () => {
     try {
@@ -119,7 +125,6 @@ export default function StudentDashboard() {
     canvas.height = video.videoHeight
     canvas.getContext('2d')?.drawImage(video, 0, 0)
     
-    // Tinanggal muna natin ang photo_url para ma-test ang sync
     const now = new Date()
     const today = now.toISOString().split('T')[0]
     const timeStr = now.toTimeString().split(' ')[0]
@@ -134,10 +139,6 @@ export default function StudentDashboard() {
     setHasTimedIn(true)
     checkQueue()
     stopCamera()
-
-    if (isOnline) {
-      syncData() // Diretso sync kung may net
-    }
   }
 
   return (
@@ -155,12 +156,6 @@ export default function StudentDashboard() {
 
       <div className="p-4 max-w-md mx-auto space-y-4">
         
-        {!isOnline && (
-          <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm text-center border border-red-100">
-            Offline ka ngayon. Ang iyong Time-In ay naka-save sa device.
-          </div>
-        )}
-
         {isSyncing && (
           <div className="bg-blue-50 text-blue-700 p-3 rounded-xl text-sm flex items-center justify-center gap-2 border border-blue-100">
             <RefreshCw className="animate-spin" size={16} /> Nag-sa-sync ng data...
@@ -199,7 +194,7 @@ export default function StudentDashboard() {
           )}
         </div>
 
-        {/* Pending Sync Info */}
+        {/* Pending Sync Info - MANANATILI NA ITO DAHIL WALANG AUTO-SYNC */}
         {pendingSyncs > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-center justify-between text-yellow-800 text-sm">
             <div className="flex items-center gap-3">
