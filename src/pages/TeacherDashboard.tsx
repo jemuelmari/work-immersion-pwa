@@ -64,7 +64,7 @@ export default function TeacherDashboard() {
     setLoadingAttendance(false)
   }
 
-  // Calculate total hours from all records
+  // Kuwentahin ang lahat ng oras
   const calculateTotalHours = () => {
     let total = 0
     attendance.forEach(rec => {
@@ -73,20 +73,60 @@ export default function TeacherDashboard() {
     return total.toFixed(2)
   }
 
+  // === BAGONG DEPED FORM 48 EXPORT ===
   const handleExportDTR = () => {
     if (!selectedStudent || attendance.length === 0) return
 
-    let csvContent = "LRN,Name,Section,Date,Time In,Time Out,Total Hours\n"
+    let csvContent = `DAILY TIME RECORD\n`
+    csvContent += `Name: ${selectedStudent.last_name}, ${selectedStudent.first_name}\n`
+    csvContent += `Section: ${selectedStudent.section}\n`
+    csvContent += `LRN: ${selectedStudent.lrn}\n\n`
     
-    attendance.forEach(rec => {
-      csvContent += `${selectedStudent.lrn},"${selectedStudent.last_name}, ${selectedStudent.first_name}",${selectedStudent.section},${rec.date},${rec.time_in || ''},${rec.time_out || ''},${rec.total_hours || 0}\n`
+    // DepEd Form 48 Header
+    csvContent += "Day,Date,AM Arrival,AM Departure,PM Arrival,PM Departure,Undertime (Hrs),Total Hours\n"
+    
+    let grandTotal = 0;
+
+    attendance.forEach((rec, index) => {
+      const dayNum = index + 1;
+      const tIn = rec.time_in ? rec.time_in.split(':') : null;
+      const tOut = rec.time_out ? rec.time_out.split(':') : null;
+      
+      let amArrival = "-", amDeparture = "-", pmArrival = "-", pmDeparture = "-";
+      
+      if (tIn && tOut) {
+        const inHour = parseInt(tIn[0]);
+        const outHour = parseInt(tOut[0]);
+
+        if (inHour < 12) {
+          amArrival = rec.time_in;
+          if (outHour < 13) amDeparture = rec.time_out;
+        }
+        
+        if (inHour >= 12 || outHour >= 13) {
+          if (inHour < 12 && outHour >= 13) {
+             amDeparture = "12:00:00";
+             pmArrival = "13:00:00";
+          } else if (inHour >= 12) {
+             pmArrival = rec.time_in;
+          }
+          pmDeparture = rec.time_out;
+        }
+      }
+
+      const totalHrs = rec.total_hours || 0;
+      grandTotal += parseFloat(totalHrs);
+
+      csvContent += `${dayNum},${rec.date},${amArrival},${amDeparture},${pmArrival},${pmDeparture},${totalHrs > 0 ? '0' : '-'},${totalHrs.toFixed(2)}\n`;
     })
+
+    csvContent += `\n\nTOTAL HOURS:,${grandTotal.toFixed(2)}\n`
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement("a")
     const url = URL.createObjectURL(blob)
     link.setAttribute("href", url)
-    link.setAttribute("download", `DTR_${selectedStudent.last_name}_${selectedStudent.first_name}.csv`)
+    link.setAttribute("download", `DTR_DepEd48_${selectedStudent.last_name}_${selectedStudent.first_name}.csv`)
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
@@ -226,10 +266,10 @@ export default function TeacherDashboard() {
                           <td className="px-4 py-3 text-gray-600">{rec.time_out || '-'}</td>
                           <td className="px-4 py-3 flex gap-2">
                             {rec.time_in_photo && (
-                              <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">In Photo</button>
+                              <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors">In Photo</button>
                             )}
                             {rec.time_out_photo && (
-                              <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">Out Photo</button>
+                              <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 transition-colors">Out Photo</button>
                             )}
                           </td>
                           <td className="px-4 py-3 text-gray-800 font-bold text-right">{rec.total_hours || 0} hrs</td>
@@ -263,7 +303,7 @@ export default function TeacherDashboard() {
       {/* Photo Viewer Modal */}
       {selectedPhoto && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
-          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-lg" />
+          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-lg object-contain" />
         </div>
       )}
     </div>
