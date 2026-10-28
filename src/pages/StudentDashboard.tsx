@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Wifi, WifiOff, Clock, Camera, CheckCircle, RefreshCw, LogOut } from 'lucide-react'
+import { Wifi, WifiOff, Clock, Camera, CheckCircle, RefreshCw, LogOut, BookOpen } from 'lucide-react'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 
-export default function StudentDashboard() {
+export default function StudentDashboard({ onOpenDiary }: { onOpenDiary: () => void }) {
   const { user, logout } = useAuth()
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [time, setTime] = useState(new Date())
@@ -40,10 +40,7 @@ export default function StudentDashboard() {
     setPendingSyncs(count)
     
     if (isOnline && user?.id) {
-      // Force Manila time sa check
-      const now = new Date()
-      const manilaTime = new Date(now.getTime() + (8 * 60 * 60 * 1000))
-      const today = manilaTime.toISOString().split('T')[0]
+      const today = new Date().toLocaleDateString('en-CA') 
       
       const { data } = await supabase
         .from('attendance')
@@ -88,7 +85,7 @@ export default function StudentDashboard() {
     }
   }
 
-  // === SYNC FUNCTION (STRICT MODE) ===
+  // === SYNC FUNCTION ===
   const syncData = async () => {
     if (!isOnline) return alert("Walang internet.")
     
@@ -127,7 +124,6 @@ export default function StudentDashboard() {
         alert("Sync Failed: " + (err.message || "Unknown error"))
       }
 
-      // BUBURAHIN LANG KUNG SUCCESSFUL
       if (isSuccess) {
         await db.syncQueue.delete(item.id!)
       }
@@ -160,7 +156,7 @@ export default function StudentDashboard() {
     setIsCameraOpen(false)
   }
 
-  // === CAPTURE IMAGE (MANUAL SYNC) ===
+  // === CAPTURE IMAGE ===
   const captureImage = async () => {
     if (!videoRef.current || !canvasRef.current) return
     
@@ -176,7 +172,6 @@ export default function StudentDashboard() {
     const photoUrl = await uploadPhoto(photoBase64, cameraMode)
 
     const now = new Date()
-    // Gagamitin natin ang default ng system (walang +8) kasi tama na ang oras ng device mo.
     const today = now.toLocaleDateString('en-CA') 
     const timeStr = now.toLocaleTimeString('en-GB', { hour12: false })
 
@@ -196,7 +191,6 @@ export default function StudentDashboard() {
     else setHasTimedOut(true)
 
     checkStatus()
-    // WALANG AUTO SYNC DITO. Hintayin ang user pindutin ang Sync Now.
   }
 
   return (
@@ -278,6 +272,14 @@ export default function StudentDashboard() {
             </div>
           )}
         </div>
+
+        {/* DAILY DIARY BUTTON */}
+        <button
+          onClick={onOpenDiary}
+          className="w-full bg-white border border-gray-200 text-gray-700 font-bold py-4 rounded-xl shadow-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+        >
+          <BookOpen size={20} className="text-blue-600" /> My Daily Diary
+        </button>
 
         {pendingSyncs > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-center justify-between text-yellow-800 text-sm">
