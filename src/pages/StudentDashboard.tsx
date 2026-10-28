@@ -17,7 +17,6 @@ export default function StudentDashboard() {
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
 
-  // Relo at Network Status
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000)
     const handleOnline = () => setIsOnline(true)
@@ -40,7 +39,7 @@ export default function StudentDashboard() {
     checkQueue()
   }, [hasTimedIn])
 
-  // SYNC FUNCTION NA MAY FIX SA DUPLICATE ERROR
+  // MANUAL SYNC LANG MUNA
   const syncData = async () => {
     if (!isOnline) {
       alert("Walang internet. Hintayin bumalik ang connection.")
@@ -65,25 +64,22 @@ export default function StudentDashboard() {
             time_in: item.payload.time
           })
           
-          // KUNG MAY ERROR
           if (error) {
-            // Kung 23505 (Duplicate), okay lang! Ibig sabihin nandiyan na siya sa DB.
             if (error.code === '23505') {
-              console.log("Record already exists in database. Treating as success.");
+              console.log("Duplicate record, treating as success.")
               isSuccess = true; 
             } else {
               console.error("SUPABASE ERROR:", error.message, "Code:", error.code)
               throw error
             }
           } else {
-            isSuccess = true; // Successful ang insert
+            isSuccess = true; 
           }
         }
       } catch (err) {
         console.error("CATCH BLOCK:", err)
       }
 
-      // Buburahin lang sa phone kung totoong success (o duplicate)
       if (isSuccess) {
         await db.syncQueue.delete(item.id!)
       }
@@ -93,14 +89,15 @@ export default function StudentDashboard() {
     checkQueue()
   }
 
-  // AUTO SYNC KAPAG BUMALIK ANG NET
+  // === AUTO SYNC DISABLED MUNA PARA MAKITA NATIN YUNG YELLOW BOX ===
+  /*
   useEffect(() => {
     if (isOnline) {
       syncData()
     }
   }, [isOnline])
+  */
 
-  // CAMERA LOGIC
   const startCamera = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
@@ -131,7 +128,6 @@ export default function StudentDashboard() {
     canvas.height = video.videoHeight
     canvas.getContext('2d')?.drawImage(video, 0, 0)
     
-    // Pansamantala nating tinanggal ang photo_url para 100% gumana muna ang sync
     const now = new Date()
     const today = now.toISOString().split('T')[0]
     const timeStr = now.toTimeString().split(' ')[0]
@@ -147,10 +143,10 @@ export default function StudentDashboard() {
     checkQueue()
     stopCamera()
 
-    // Kung online, subukang i-sync agad
-    if (isOnline) {
-      setTimeout(() => syncData(), 500)
-    }
+    // Kung online, pwede nating subukang i-sync agad (optional)
+    // if (isOnline) {
+    //   setTimeout(() => syncData(), 500)
+    // }
   }
 
   return (
