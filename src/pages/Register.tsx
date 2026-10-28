@@ -1,10 +1,8 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { useNavigate } from 'react-router-dom'
 import { Loader2, ArrowLeft } from 'lucide-react'
 
-export default function Register() {
-  const navigate = useNavigate()
+export default function Register({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -14,7 +12,7 @@ export default function Register() {
     firstName: '',
     lastName: '',
     middleName: '',
-    section: '12 GAS', // Default
+    section: '12 GAS',
     password: ''
   })
 
@@ -35,7 +33,7 @@ export default function Register() {
       if (existing) throw new Error('Ang LRN na ito ay rehistrado na. Pakisubukang mag-login.')
 
       // 2. Gumawa ng Supabase Auth account
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const { error: authError } = await supabase.auth.signUp({
         email: `${formData.lrn}@student.local`,
         password: formData.password,
       })
@@ -49,14 +47,14 @@ export default function Register() {
         last_name: formData.lastName,
         middle_name: formData.middleName,
         section: formData.section,
-        password_hash: formData.password, // Dapat i-hash ito sa totoong app, pero okay na muna ito
-        status: 'Pending' // Importante: Kailangan i-approve ni Teacher
+        password_hash: formData.password,
+        status: 'Pending'
       })
 
       if (dbError) throw new Error('May error sa pag-save ng info: ' + dbError.message)
 
       setSuccess('Matagumpay ang registration! Hintayin mo lang ang approval ng iyong Teacher.')
-      setTimeout(() => navigate('/'), 3000) // Balik sa login pagkatapos ng 3 seconds
+      setTimeout(() => onBack(), 3000) // Balik sa login pagkatapos ng 3 seconds
 
     } catch (err: any) {
       setError(err.message)
@@ -68,7 +66,7 @@ export default function Register() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full relative">
-        <button onClick={() => navigate('/')} className="absolute top-4 left-4 p-2 text-gray-400 hover:text-gray-600">
+        <button onClick={onBack} className="absolute top-4 left-4 p-2 text-gray-400 hover:text-gray-600">
           <ArrowLeft size={20} />
         </button>
         
