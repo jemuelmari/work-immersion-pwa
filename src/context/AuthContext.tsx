@@ -33,10 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (id: string, password: string, isTeacher: boolean) => {
     try {
-      // Kung student, gagawin nating email format para pumasok sa Supabase Auth
       const email = isTeacher ? id : `${id}@student.local`
 
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      const { error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
       })
