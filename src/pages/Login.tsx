@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Loader2, User, GraduationCap } from 'lucide-react'
+import { Loader2, User, GraduationCap, KeyRound } from 'lucide-react'
 
-export default function Login({ onGoToRegister }: { onGoToRegister: () => void }) {
+export default function Login({ onGoToRegister, onGoToTeacherRegister, onGoToForgotPassword }: { onGoToRegister: () => void; onGoToTeacherRegister: () => void; onGoToForgotPassword: () => void }) {
   const { login } = useAuth()
   const [isTeacher, setIsTeacher] = useState(false)
   const [id, setId] = useState('')
@@ -55,11 +55,15 @@ export default function Login({ onGoToRegister }: { onGoToRegister: () => void }
           </button>
         </form>
 
-        <div className="mt-8 text-center text-sm text-gray-600">
-          Wala pang account?{' '}
-          <button onClick={onGoToRegister} className="text-blue-600 font-bold hover:underline transition-all">
-            Mag-register dito
-          </button>
+        <div className="mt-6 text-center text-sm text-gray-600 space-y-3">
+          {!isTeacher ? (
+            <>
+              <p>Wala pang account? <button onClick={onGoToRegister} className="text-blue-600 font-bold hover:underline">Mag-register dito</button></p>
+              <p><button onClick={onGoToForgotPassword} className="text-orange-600 font-bold hover:underline flex items-center justify-center gap-1"><KeyRound size={14}/> Nakalimutan ang Password?</button></p>
+            </>
+          ) : (
+            <p>Bagong Teacher? <button onClick={onGoToTeacherRegister} className="text-blue-600 font-bold hover:underline">Mag-register dito</button></p>
+          )}
         </div>
       </div>
     </div>
