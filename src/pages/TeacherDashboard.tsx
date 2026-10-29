@@ -1,53 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock, KeyRound } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
-interface Student {
-  lrn: string;
-  first_name: string;
-  last_name: string;
-  middle_name: string;
-  section: string;
-  status: string;
-  field: string;
-  course: string;
-  deployment_area: string;
-  sex: string;
-}
-
-interface AttendanceRecord {
-  id: string;
-  date: string;
-  time_in: string;
-  time_out: string;
-  morning_in: string;
-  morning_out: string;
-  afternoon_in: string;
-  afternoon_out: string;
-  total_hours: number;
-  time_in_photo: string;
-  time_out_photo: string;
-}
-
-interface DiaryRecord {
-  id: string;
-  day_number: number;
-  date: string;
-  entry_text: string;
-  image_urls: string[];
-  rubric_score: number;
-  teacher_feedback: string;
-  is_locked: boolean; 
-}
-
-interface RequirementRecord {
-  id: string;
-  requirement_name: string;
-  file_name: string;
-  file_url: string;
-  uploaded_at: string;
-}
+interface Student { lrn: string; first_name: string; last_name: string; middle_name: string; section: string; status: string; field: string; course: string; deployment_area: string; sex: string; }
+interface AttendanceRecord { id: string; date: string; time_in: string; time_out: string; morning_in: string; morning_out: string; afternoon_in: string; afternoon_out: string; total_hours: number; time_in_photo: string; time_out_photo: string; }
+interface DiaryRecord { id: string; day_number: number; date: string; entry_text: string; image_urls: string[]; rubric_score: number; teacher_feedback: string; is_locked: boolean; }
+interface RequirementRecord { id: string; requirement_name: string; file_name: string; file_url: string; uploaded_at: string; }
+interface ResetRequest { id: string; lrn: string; reason: string; status: string; requested_at: string; student_name?: string; }
 
 export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: { onOpenScores: () => void; onOpenAnnouncements: () => void }) {
   const { user, logout } = useAuth()
@@ -56,8 +16,9 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [searchTerm, setSearchTerm] = useState('')
   const [filterSection, setFilterSection] = useState('All')
   const [filterSex, setFilterSex] = useState('All')
-  const [activeTab, setActiveTab] = useState<'directory' | 'approvals'>('directory')
+  const [activeTab, setActiveTab] = useState<'directory' | 'approvals' | 'reset-requests'>('directory') // Bagong tab
   const [pendingTeachers, setPendingTeachers] = useState<any[]>([])
+  const [resetRequests, setResetRequests] = useState<ResetRequest[]>([]) // Bagong state
   
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [modalTab, setModalTab] = useState<'attendance' | 'diary' | 'requirements'>('attendance')
@@ -75,6 +36,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [feedback, setFeedback] = useState('')
   const [savingGrades, setSavingGrades] = useState(false)
 
+  // State para sa Reset Password Modal
+  const [resetRequestToProcess, setResetRequestToProcess] = useState<ResetRequest | null>(null)
+  const [newPasswordForStudent, setNewPasswordForStudent] = useState('')
+  const [isResetting, setIsResetting] = useState(false)
+
   const RUBRIC_CATEGORIES = [
     { id: 'content', name: 'Content & Substance', max: 30, description: 'Detalye ng karanasan, mga natutunan, at mga gawain sa araw na iyon.' },
     { id: 'organization', name: 'Organization & Clarity', max: 20, description: 'Maayos ba ang daloy ng kwento? Madaling maintindihan ang mga pangyayari?' },
@@ -89,6 +55,25 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
     const { data: teacherData } = await supabase.from('teachers').select('*').eq('status', 'Pending')
     if (teacherData) setPendingTeachers(teacherData)
+
+    // Fetch reset requests
+    const { data: resetData } = await supabase
+      .from('password_reset_requests')
+      .select('*, students(first_name, last_name)')
+      .eq('status', 'Pending')
+      .order('requested_at', { ascending: true })
+    
+    if (resetData) {
+      const formattedRequests: ResetRequest[] = resetData.map((r: any) => ({
+        id: r.id,
+        lrn: r.lrn,
+        reason: r.reason,
+        status: r.status,
+        requested_at: r.requested_at,
+        student_name: r.students ? `${r.students.last_name}, ${r.students.first_name}` : r.lrn
+      }))
+      setResetRequests(formattedRequests)
+    }
 
     setLoading(false)
   }
@@ -119,6 +104,46 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     const { error } = await supabase.from('teachers').update({ status: 'Rejected' }).eq('email', email)
     if (!error) fetchStudents()
     else alert("Error: " + error.message)
+  }
+
+  // === RESET PASSWORD FUNCTION ===
+  const handleResetPassword = async () => {
+    if (!resetRequestToProcess || !newPasswordForStudent) return
+    setIsResetting(true)
+
+    try {
+      // 1. I-update ang password sa Auth table (kailangan ng admin access, kaya separate na function ito sa app)
+      // Note: Dahil client-side lang tayo, hindi natin direktang ma-update ang auth.users.
+      // Pero, pwede nating i-update ang password_hash sa students table at i-set ang is_first_login = true.
+      
+      const { error: studentError } = await supabase
+        .from('students')
+        .update({ 
+          password_hash: newPasswordForStudent, 
+          is_first_login: true 
+        })
+        .eq('lrn', resetRequestToProcess.lrn)
+
+      if (studentError) throw studentError
+
+      // 2. Mark the request as Approved
+      const { error: requestError } = await supabase
+        .from('password_reset_requests')
+        .update({ status: 'Approved', processed_at: new Date().toISOString() })
+        .eq('id', resetRequestToProcess.id)
+
+      if (requestError) throw requestError
+
+      alert(`✅ Password reset successful!\n\nLRN: ${resetRequestToProcess.lrn}\nBagong Password: ${newPasswordForStudent}\n\nSabihin ito sa estudyante.`)
+      setResetRequestToProcess(null)
+      setNewPasswordForStudent('')
+      fetchStudents() // Refresh list
+
+    } catch (err: any) {
+      alert('Error: ' + err.message)
+    } finally {
+      setIsResetting(false)
+    }
   }
 
   const approvedStudents = students.filter(s => s.status === 'Approved')
@@ -168,7 +193,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   }
 
   const handleResetAttendance = async (recordId: string) => {
-    if (!confirm("Sigurado ka bang gusto mong i-reset ang attendance record na ito? Mabubura lahat ng oras (AM/PM).")) return
+    if (!confirm("Sigurado ka bang gusto mong i-reset ang attendance record na ito?")) return
     const { error } = await supabase.from('attendance').delete().eq('id', recordId)
     if (!error) {
       setAttendance(attendance.filter(a => a.id !== recordId))
@@ -177,7 +202,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   }
 
   const handleUnlockDiary = async (entryId: string) => {
-    if (!confirm("Sigurado ka bang gusto mong i-unlock ito? Makakapag-edit na ulit ang estudyante.")) return
+    if (!confirm("Sigurado ka bang gusto mong i-unlock ito?")) return
     const { error } = await supabase.from('diary').update({ is_locked: false }).eq('id', entryId)
     if (!error) {
       if (selectedStudent) {
@@ -185,9 +210,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         if (data) setDiary(data)
       }
       alert("Na-unlock na ang diary entry.")
-    } else {
-      alert("Error sa pag-unlock: " + error.message)
-    }
+    } else { alert("Error: " + error.message) }
   }
 
   const calculateTotalHours = () => {
@@ -236,32 +259,16 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
     setSavingGrades(true)
-
     try {
       let totalScore = 0
-      RUBRIC_CATEGORIES.forEach(cat => {
-        const score = parseFloat(gradingScores[cat.id] || '0')
-        totalScore += score
-      })
+      RUBRIC_CATEGORIES.forEach(cat => { totalScore += parseFloat(gradingScores[cat.id] || '0') })
 
       for (const cat of RUBRIC_CATEGORIES) {
         const scoreValue = parseFloat(gradingScores[cat.id] || '0')
-        await supabase.from('diary_scores').upsert({
-          diary_id: selectedDiaryEntry.id,
-          criteria: cat.name,
-          score: scoreValue
-        }, { onConflict: 'diary_id,criteria' })
+        await supabase.from('diary_scores').upsert({ diary_id: selectedDiaryEntry.id, criteria: cat.name, score: scoreValue }, { onConflict: 'diary_id,criteria' })
       }
 
-      const { error: updateError } = await supabase
-        .from('diary')
-        .update({
-          rubric_score: totalScore,
-          teacher_feedback: feedback,
-          is_locked: true 
-        })
-        .eq('id', selectedDiaryEntry.id)
-
+      const { error: updateError } = await supabase.from('diary').update({ rubric_score: totalScore, teacher_feedback: feedback, is_locked: true }).eq('id', selectedDiaryEntry.id)
       if (updateError) throw updateError
 
       if (selectedStudent) {
@@ -271,12 +278,9 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
       setIsGradingModalOpen(false)
       alert('Grades saved successfully! Naka-lock na ang diary.')
-
     } catch (err: any) {
       alert('Error saving grades: ' + err.message)
-    } finally {
-      setSavingGrades(false)
-    }
+    } finally { setSavingGrades(false) }
   }
 
   return (
@@ -295,9 +299,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
       <div className="max-w-5xl mx-auto p-4 space-y-6 mt-2">
         
+        {/* TABS NAVIGATION */}
         <div className="flex flex-wrap gap-2 p-1.5 bg-white/40 backdrop-blur-md rounded-2xl border border-white/50 w-fit">
           <button onClick={() => setActiveTab('directory')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'directory' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><Users size={16} /> Directory</button>
           <button onClick={() => setActiveTab('approvals')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'approvals' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><UserPlus size={16} /> Approvals {pendingStudents.length + pendingTeachers.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length + pendingTeachers.length}</span>}</button>
+          <button onClick={() => setActiveTab('reset-requests')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'reset-requests' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><KeyRound size={16} /> Reset Requests {resetRequests.length > 0 && <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full">{resetRequests.length}</span>}</button>
         </div>
 
         <div className="flex gap-3">
@@ -308,69 +314,29 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         {activeTab === 'directory' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="glass-card p-6 rounded-3xl flex items-center gap-5">
-                <div className="bg-blue-100 text-blue-600 p-4 rounded-2xl"><Users size={28} /></div>
-                <div><p className="text-sm text-gray-500 font-bold">Approved Students</p><p className="text-3xl font-extrabold text-gray-800">{approvedStudents.length}</p></div>
-              </div>
-              <div className="glass-card p-6 rounded-3xl flex items-center gap-5">
-                <div className="bg-green-100 text-green-600 p-4 rounded-2xl"><CalendarCheck size={28} /></div>
-                <div><p className="text-sm text-gray-500 font-bold">Sections</p><p className="text-3xl font-extrabold text-gray-800">12 GAS & 12 HUMSS</p></div>
-              </div>
+              <div className="glass-card p-6 rounded-3xl flex items-center gap-5"><div className="bg-blue-100 text-blue-600 p-4 rounded-2xl"><Users size={28} /></div><div><p className="text-sm text-gray-500 font-bold">Approved Students</p><p className="text-3xl font-extrabold text-gray-800">{approvedStudents.length}</p></div></div>
+              <div className="glass-card p-6 rounded-3xl flex items-center gap-5"><div className="bg-green-100 text-green-600 p-4 rounded-2xl"><CalendarCheck size={28} /></div><div><p className="text-sm text-gray-500 font-bold">Sections</p><p className="text-3xl font-extrabold text-gray-800">12 GAS & 12 HUMSS</p></div></div>
             </div>
 
             <div className="glass-card rounded-3xl overflow-hidden">
               <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                  <div className="relative w-full md:w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="glass-input w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none" />
-                  </div>
-                  <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none">
-                    <option value="All">All Sections</option>
-                    <option value="12 GAS">12 GAS</option>
-                    <option value="12 HUMSS">12 HUMSS</option>
-                  </select>
-                  <select value={filterSex} onChange={e => setFilterSex(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none">
-                    <option value="All">All Sex</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                  </select>
+                  <div className="relative w-full md:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="glass-input w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none" /></div>
+                  <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none"><option value="All">All Sections</option><option value="12 GAS">12 GAS</option><option value="12 HUMSS">12 HUMSS</option></select>
+                  <select value={filterSex} onChange={e => setFilterSex(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none"><option value="All">All Sex</option><option value="Male">Male</option><option value="Female">Female</option></select>
                 </div>
-                <button onClick={handleExportStudents} className="bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-green-200 transition-colors w-full md:w-auto justify-center">
-                  <Download size={16} /> Export List
-                </button>
+                <button onClick={handleExportStudents} className="bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-green-200 transition-colors w-full md:w-auto justify-center"><Download size={16} /> Export List</button>
               </div>
               
               {loading ? <div className="p-10 text-center text-gray-500 font-medium">Loading students...</div> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-white/30 border-b border-white/50 text-gray-600">
-                      <tr>
-                        <th className="px-5 py-4 font-bold">LRN</th>
-                        <th className="px-5 py-4 font-bold">Last Name</th>
-                        <th className="px-5 py-4 font-bold">First Name</th>
-                        <th className="px-5 py-4 font-bold">M.I.</th>
-                        <th className="px-5 py-4 font-bold">Sex</th>
-                        <th className="px-5 py-4 font-bold">Section</th>
-                        <th className="px-5 py-4 font-bold">Course</th>
-                        <th className="px-5 py-4 font-bold">Area</th>
-                        <th className="px-5 py-4 font-bold text-right">Action</th>
-                      </tr>
-                    </thead>
+                    <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Last Name</th><th className="px-5 py-4 font-bold">First Name</th><th className="px-5 py-4 font-bold">M.I.</th><th className="px-5 py-4 font-bold">Sex</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Course</th><th className="px-5 py-4 font-bold">Area</th><th className="px-5 py-4 font-bold text-right">Action</th></tr></thead>
                     <tbody className="divide-y divide-white/40">
                       {filteredStudents.map(student => (
                         <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
-                          <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td>
-                          <td className="px-5 py-4 font-bold text-gray-800">{student.last_name}</td>
-                          <td className="px-5 py-4 text-gray-800">{student.first_name}</td>
-                          <td className="px-5 py-4 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td>
-                          <td className="px-5 py-4 text-gray-600">{student.sex}</td>
-                          <td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td>
-                          <td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.course}</td>
-                          <td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.deployment_area}</td>
-                          <td className="px-5 py-4 text-right">
-                            <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-bold text-sm bg-blue-50/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">View Record</button>
-                          </td>
+                          <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}</td><td className="px-5 py-4 text-gray-800">{student.first_name}</td><td className="px-5 py-4 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td><td className="px-5 py-4 text-gray-600">{student.sex}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.course}</td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.deployment_area}</td>
+                          <td className="px-5 py-4 text-right"><button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-bold text-sm bg-blue-50/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">View Record</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -387,16 +353,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Student Registrations</h2></div>
               {pendingStudents.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na estudyante.</div> : (
                 <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-white/30 border-b border-white/50 text-gray-600">
-                    <tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Name</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Field & Course</th><th className="px-5 py-4 font-bold text-right">Action</th></tr>
-                  </thead>
+                  <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Name</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Field & Course</th><th className="px-5 py-4 font-bold text-right">Action</th></tr></thead>
                   <tbody className="divide-y divide-white/40">
                     {pendingStudents.map(student => (
                       <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
-                        <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td>
-                        <td className="px-5 py-4 font-bold text-gray-800">{student.last_name}, {student.first_name}</td>
-                        <td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td>
-                        <td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.field} <br/> {student.course}</td>
+                        <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}, {student.first_name}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.field} <br/> {student.course}</td>
                         <td className="px-5 py-4 text-right flex justify-end gap-2">
                           <button onClick={() => handleApprove(student.lrn)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-green-200 transition-colors"><CheckCircle size={16} /> Approve</button>
                           <button onClick={() => handleReject(student.lrn)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-red-200 transition-colors"><XCircle size={16} /> Reject</button>
@@ -410,19 +371,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
             <div className="glass-card rounded-3xl overflow-hidden">
               <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Teacher Registrations</h2></div>
-              {pendingTeachers.length === 0 ? (
-                <div className="p-10 text-center text-gray-500 font-medium">Walang pending na teacher.</div>
-              ) : (
+              {pendingTeachers.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na teacher.</div> : (
                 <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-white/30 border-b border-white/50 text-gray-600">
-                    <tr><th className="px-5 py-4 font-bold">Email</th><th className="px-5 py-4 font-bold">Role</th><th className="px-5 py-4 font-bold">Date Registered</th><th className="px-5 py-4 font-bold text-right">Action</th></tr>
-                  </thead>
+                  <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">Email</th><th className="px-5 py-4 font-bold">Role</th><th className="px-5 py-4 font-bold">Date Registered</th><th className="px-5 py-4 font-bold text-right">Action</th></tr></thead>
                   <tbody className="divide-y divide-white/40">
                     {pendingTeachers.map(t => (
                       <tr key={t.email} className="hover:bg-white/40 transition-colors">
-                        <td className="px-5 py-4 font-bold text-gray-800">{t.email}</td>
-                        <td className="px-5 py-4 text-gray-600">{t.role}</td>
-                        <td className="px-5 py-4 text-gray-600">{new Date(t.created_at).toLocaleDateString()}</td>
+                        <td className="px-5 py-4 font-bold text-gray-800">{t.email}</td><td className="px-5 py-4 text-gray-600">{t.role}</td><td className="px-5 py-4 text-gray-600">{new Date(t.created_at).toLocaleDateString()}</td>
                         <td className="px-5 py-4 text-right flex justify-end gap-2">
                           <button onClick={() => handleApproveTeacher(t.email)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors"><CheckCircle size={16} /> Approve</button>
                           <button onClick={() => handleRejectTeacher(t.email)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors"><XCircle size={16} /> Reject</button>
@@ -435,237 +390,65 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             </div>
           </div>
         )}
+
+        {/* RESET REQUESTS TAB */}
+        {activeTab === 'reset-requests' && (
+          <div className="glass-card rounded-3xl overflow-hidden">
+            <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Password Reset Requests</h2></div>
+            {resetRequests.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na reset requests.</div> : (
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Pangalan</th><th className="px-5 py-4 font-bold">Dahilan</th><th className="px-5 py-4 font-bold">Petsa</th><th className="px-5 py-4 font-bold text-right">Aksyon</th></tr></thead>
+                <tbody className="divide-y divide-white/40">
+                  {resetRequests.map(req => (
+                    <tr key={req.id} className="hover:bg-white/40 transition-colors">
+                      <td className="px-5 py-4 font-mono text-gray-700">{req.lrn}</td>
+                      <td className="px-5 py-4 font-bold text-gray-800">{req.student_name}</td>
+                      <td className="px-5 py-4 text-gray-600 text-xs">{req.reason || 'Walang dahilan'}</td>
+                      <td className="px-5 py-4 text-gray-600 text-xs">{new Date(req.requested_at).toLocaleString()}</td>
+                      <td className="px-5 py-4 text-right">
+                        <button onClick={() => setResetRequestToProcess(req)} className="text-white bg-orange-500 hover:bg-orange-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors ml-auto">
+                          <KeyRound size={16} /> Reset Password
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
-      {selectedStudent && (
+      {/* RESET PASSWORD MODAL */}
+      {resetRequestToProcess && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="p-6 border-b border-white/50 bg-white/40 flex justify-between items-start">
-              <div>
-                <h3 className="text-xl font-extrabold text-gray-800">Student Records</h3>
-                <p className="text-sm text-gray-600 font-medium mt-1">{selectedStudent.last_name}, {selectedStudent.first_name} ({selectedStudent.lrn})</p>
-                <p className="text-xs text-blue-600 font-bold mt-1 bg-blue-50 px-2 py-1 rounded w-fit">{selectedStudent.field} | {selectedStudent.course} | {selectedStudent.deployment_area}</p>
-              </div>
-              <button onClick={() => setSelectedStudent(null)} className="text-gray-400 hover:text-gray-600 p-2 bg-white/50 rounded-full transition-colors"><X size={20} /></button>
-            </div>
-
-            <div className="flex border-b border-white/50 px-6 bg-white/20">
-              <button onClick={() => setModalTab('attendance')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'attendance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><CalendarCheck size={18} /> Attendance (DTR)</button>
-              <button onClick={() => setModalTab('diary')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'diary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><BookOpen size={18} /> Daily Diary</button>
-              <button onClick={() => setModalTab('requirements')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'requirements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><FileText size={18} /> Requirements</button>
-            </div>
-
-            <div className="p-6 overflow-y-auto flex-1">
-              {loadingRecords ? <div className="text-center py-10 text-gray-500 font-medium">Loading records...</div> : modalTab === 'attendance' ? (
-                attendance.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang attendance record.</div> : (
-                  <>
-                    <div className="mb-6 bg-gradient-to-r from-blue-500 to-indigo-500 p-5 rounded-2xl flex justify-between items-center shadow-lg shadow-blue-200">
-                      <span className="font-bold text-white/90">Total Rendered Hours:</span>
-                      <span className="text-3xl font-extrabold text-white">{calculateTotalHours()} <span className="text-lg">hrs</span></span>
-                    </div>
-                    <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden">
-                      <table className="w-full text-left text-sm whitespace-nowrap">
-                        <thead className="bg-white/80 border-b border-gray-100 text-gray-600">
-                          <tr>
-                            <th className="px-4 py-3 font-bold">Date</th>
-                            <th className="px-4 py-3 font-bold text-center">Morning In/Out</th>
-                            <th className="px-4 py-3 font-bold text-center">Afternoon In/Out</th>
-                            <th className="px-4 py-3 font-bold">Photos</th>
-                            <th className="px-4 py-3 font-bold text-right">Total</th>
-                            <th className="px-4 py-3 font-bold text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {attendance.map(rec => (
-                            <tr key={rec.id} className="hover:bg-white transition-colors">
-                              <td className="px-4 py-3 text-gray-800 font-medium">{rec.date}</td>
-                              <td className="px-4 py-3 text-gray-600 font-mono text-xs text-center">
-                                {rec.morning_in ? rec.morning_in : '-'} / {rec.morning_out ? rec.morning_out : '-'}
-                              </td>
-                              <td className="px-4 py-3 text-gray-600 font-mono text-xs text-center">
-                                {rec.afternoon_in ? rec.afternoon_in : '-'} / {rec.afternoon_out ? rec.afternoon_out : '-'}
-                              </td>
-                              <td className="px-4 py-3 flex gap-2">
-                                {rec.time_in_photo && <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold hover:bg-blue-200 transition-colors">In</button>}
-                                {rec.time_out_photo && <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-bold hover:bg-orange-200 transition-colors">Out</button>}
-                              </td>
-                              <td className="px-4 py-3 text-blue-600 font-extrabold text-right">{rec.total_hours || 0} hrs</td>
-                              <td className="px-4 py-3 text-right">
-                                <button onClick={() => handleResetAttendance(rec.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded-lg transition-colors" title="Reset Attendance">
-                                  <RotateCcw size={16} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )
-              ) : modalTab === 'diary' ? (
-                diary.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang diary entry.</div> : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {diary.map(entry => (
-                      <div key={entry.id} onClick={() => openDiaryView(entry)} className={`bg-white/80 p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-all ${entry.is_locked ? 'border-green-300 bg-green-50/30' : 'border-white hover:border-blue-300 cursor-pointer hover:scale-[1.02]'}`}>
-                        <div>
-                          <div className="flex justify-between items-center mb-3">
-                            <span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg text-sm">Day {entry.day_number}</span>
-                            <span className="text-xs text-gray-500 font-medium">{entry.date}</span>
-                          </div>
-                          <p className="text-sm text-gray-700 line-clamp-3 leading-relaxed">{entry.entry_text}</p>
-                          {entry.image_urls?.length > 0 && <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 font-medium"><ImageIcon size={14} /> {entry.image_urls.length} image(s) attached</div>}
-                        </div>
-                        
-                        <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col gap-2">
-                          <div className="flex items-center justify-between">
-                            {entry.rubric_score ? (
-                              <span className="font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded text-sm flex items-center gap-1"><Star size={14} /> Score: {entry.rubric_score}/100</span>
-                            ) : (
-                              <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>
-                            )}
-                            
-                            {/* LAGING MAY BUTTON PARA MAKA-GRADE */}
-                            <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                              {entry.rubric_score ? 'Re-grade' : 'Grade'}
-                            </button>
-                          </div>
-                          
-                          {entry.is_locked && (
-                            <button onClick={(e) => { e.stopPropagation(); handleUnlockDiary(entry.id); }} className="text-xs bg-orange-50 text-orange-600 font-bold px-3 py-1.5 rounded-lg hover:bg-orange-100 transition-colors w-full flex items-center justify-center gap-1">
-                              <Unlock size={12} /> Unlock for Re-upload
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              ) : (
-                requirements.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang na-upload na requirements.</div> : (
-                  <>
-                    <div className="mb-4 flex justify-end">
-                      <button onClick={() => {
-                          requirements.forEach(req => {
-                            const safeName = req.requirement_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Document'
-                            const fileName = `${selectedStudent.lrn}_${selectedStudent.last_name}_${selectedStudent.first_name}_${safeName}.pdf`
-                            const link = document.createElement('a')
-                            link.href = req.file_url
-                            link.download = fileName
-                            link.target = '_blank'
-                            link.click()
-                          })
-                        }}
-                        className="text-sm bg-green-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-green-600 flex items-center gap-2 shadow-lg shadow-green-200 transition-colors">
-                        <Download size={16} /> Download All Files
-                      </button>
-                    </div>
-                    <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden divide-y divide-gray-100">
-                      {requirements.map(req => (
-                        <div key={req.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><FileText size={20} /></div>
-                            <div>
-                              <p className="font-bold text-sm text-gray-800">{req.requirement_name}</p>
-                              <p className="text-xs text-gray-500 font-medium">{req.file_name} • {new Date(req.uploaded_at).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                          <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">View</a>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )
-              )}
-            </div>
-
-            <div className="p-4 border-t border-white/50 bg-white/40 flex justify-end gap-3">
-              <button onClick={() => setSelectedStudent(null)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Close</button>
-              {modalTab === 'attendance' && (
-                <button onClick={handleExportDTR} disabled={attendance.length === 0} className="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold rounded-xl transition-colors flex items-center gap-2 shadow-sm"><Download size={16} /> Export DTR</button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isViewingDiary && selectedDiaryEntry && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[75]">
-          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
-            <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center">
-              <div>
-                <h3 className="font-extrabold text-gray-800 text-lg">Day {selectedDiaryEntry.day_number} Diary</h3>
-                <p className="text-xs text-gray-500 font-medium">{selectedDiaryEntry.date}</p>
-              </div>
-              <button onClick={() => setIsViewingDiary(false)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button>
-            </div>
-            <div className="p-6 overflow-y-auto">
-              <p className="text-gray-700 whitespace-pre-wrap mb-6 leading-relaxed">{selectedDiaryEntry.entry_text}</p>
-              {selectedDiaryEntry.image_urls?.length > 0 && (
-                <div className="space-y-3 mt-4 pt-4 border-t border-white/50">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attached Images</p>
-                  {selectedDiaryEntry.image_urls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-xl border border-white shadow-sm" />)}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isGradingModalOpen && selectedDiaryEntry && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
-          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
-            <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center">
-              <div>
-                <h3 className="font-extrabold text-gray-800 text-lg">Grade Diary Entry</h3>
-                <p className="text-xs text-gray-500 font-medium">Day {selectedDiaryEntry.day_number} - {selectedDiaryEntry.date}</p>
-              </div>
-              <button onClick={() => setIsGradingModalOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button>
-            </div>
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="font-extrabold text-gray-800 text-lg mb-4">Reset Password</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Mag-set ng bagong password para kay <span className="font-bold">{resetRequestToProcess.student_name}</span> ({resetRequestToProcess.lrn}).
+            </p>
             
-            <div className="p-6 overflow-y-auto space-y-4 bg-gray-50/50">
-              {RUBRIC_CATEGORIES.map(cat => (
-                <div key={cat.id} className="bg-white/80 p-4 rounded-xl border border-white">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm font-bold text-gray-700">{cat.name}</label>
-                    <span className="text-xs font-medium text-gray-500">Max: {cat.max}</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-2 italic">{cat.description}</p>
-                  <input 
-                    type="number" 
-                    min="0" 
-                    max={cat.max}
-                    value={gradingScores[cat.id] || ''} 
-                    onChange={(e) => setGradingScores({...gradingScores, [cat.id]: e.target.value})}
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-lg font-bold text-blue-600"
-                    placeholder="0"
-                  />
-                </div>
-              ))}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Bagong Password</label>
+                <input 
+                  type="text" 
+                  value={newPasswordForStudent} 
+                  onChange={(e) => setNewPasswordForStudent(e.target.value)}
+                  className="glass-input w-full px-4 py-2.5 rounded-xl outline-none font-mono"
+                  placeholder="Hal. Juan123!"
+                />
+                <p className="text-xs text-gray-500 mt-1">I-note ito at sabihin sa estudyante.</p>
+              </div>
 
-              <div className="bg-white/80 p-4 rounded-xl border border-white">
-                <label className="block text-sm font-bold text-gray-700 mb-2">Teacher's Feedback</label>
-                <textarea 
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none h-24"
-                  placeholder="Isulat ang feedback..."
-                ></textarea>
+              <div className="flex justify-end gap-3 mt-6">
+                <button onClick={() => setResetRequestToProcess(null)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Cancel</button>
+                <button onClick={handleResetPassword} disabled={isResetting || !newPasswordForStudent} className="glass-button-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold disabled:opacity-50">
+                  {isResetting ? 'Nagre-reset...' : 'I-save ang Bagong Password'}
+                </button>
               </div>
             </div>
-
-            <div className="p-4 border-t border-white/50 bg-white/40 flex justify-end gap-3">
-              <button onClick={() => setIsGradingModalOpen(false)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Cancel</button>
-              <button onClick={handleSaveGrades} disabled={savingGrades} className="glass-button-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold disabled:opacity-50">
-                {savingGrades ? 'Nag-sa-save...' : 'Save Grades'}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
-
-      {selectedPhoto && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
-          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-2xl object-contain shadow-2xl" />
         </div>
       )}
     </div>
