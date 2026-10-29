@@ -3,24 +3,11 @@ import { supabase } from '../lib/supabase'
 import { Loader2, ArrowLeft } from 'lucide-react'
 
 const COURSE_TO_FIELD: Record<string, string> = {
-  'Nursing': 'Health',
-  'Medical Technology': 'Health',
-  'Caregiving': 'Health',
-  'BS Agriculture': 'Agriculture',
-  'Agribusiness': 'Agriculture',
-  'Animal Science': 'Agriculture',
-  'IT': 'Engineering/IT',
-  'Civil Engineering': 'Engineering/IT',
-  'Electrical Engineering': 'Engineering/IT',
-  'Computer Science': 'Engineering/IT',
-  'Geodetic Engineering': 'Engineering/IT',
-  'Accountancy': 'Business',
-  'Business Admin': 'Business',
-  'Entrepreneurship': 'Business',
-  'Marketing': 'Business',
-  'BEEd': 'Education',
-  'BSEd': 'Education',
-  'Early Childhood Education': 'Education'
+  'Nursing': 'Health', 'Medical Technology': 'Health', 'Caregiving': 'Health',
+  'BS Agriculture': 'Agriculture', 'Agribusiness': 'Agriculture', 'Animal Science': 'Agriculture',
+  'IT': 'Engineering/IT', 'Civil Engineering': 'Engineering/IT', 'Electrical Engineering': 'Engineering/IT', 'Computer Science': 'Engineering/IT', 'Geodetic Engineering': 'Engineering/IT',
+  'Accountancy': 'Business', 'Business Admin': 'Business', 'Entrepreneurship': 'Business', 'Marketing': 'Business',
+  'BEEd': 'Education', 'BSEd': 'Education', 'Early Childhood Education': 'Education'
 }
 
 const FIELD_TO_AREAS: Record<string, string[]> = {
@@ -31,12 +18,7 @@ const FIELD_TO_AREAS: Record<string, string[]> = {
   'Education': []
 }
 
-const SCHOOLS = [
-  'Sta. Cruz Elementary School',
-  'Iba Elementary School',
-  'San Jose National High School',
-  'Other School'
-]
+const SCHOOLS = ['Sta. Cruz Elementary School', 'Iba Elementary School', 'San Jose National High School', 'Other School']
 
 export default function Register({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false)
@@ -44,16 +26,9 @@ export default function Register({ onBack }: { onBack: () => void }) {
   const [success, setSuccess] = useState('')
   
   const [formData, setFormData] = useState({
-    lrn: '',
-    firstName: '',
-    lastName: '',
-    middleName: '',
-    section: '12 GAS',
-    course: 'Nursing',
-    field: 'Health',
-    deploymentArea: 'RHU San Jose',
-    schoolName: '',
-    password: ''
+    lrn: '', firstName: '', lastName: '', middleName: '',
+    section: '12 GAS', course: 'Nursing', field: 'Health',
+    deploymentArea: 'RHU San Jose', schoolName: '', password: ''
   })
 
   useEffect(() => {
@@ -61,13 +36,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
     setFormData(prev => {
       const availableAreas = FIELD_TO_AREAS[selectedField]
       const newArea = availableAreas && availableAreas.length > 0 ? availableAreas[0] : ''
-      
-      return {
-        ...prev,
-        field: selectedField,
-        deploymentArea: newArea,
-        schoolName: ''
-      }
+      return { ...prev, field: selectedField, deploymentArea: newArea, schoolName: '' }
     })
   }, [formData.course])
 
@@ -78,20 +47,14 @@ export default function Register({ onBack }: { onBack: () => void }) {
     setLoading(true)
 
     try {
-      const { data: existing } = await supabase
-        .from('students')
-        .select('lrn')
-        .eq('lrn', formData.lrn)
-        .single()
-        
-      if (existing) throw new Error('Ang LRN na ito ay rehistrado na. Pakisubukang mag-login.')
+      const { data: existing } = await supabase.from('students').select('lrn').eq('lrn', formData.lrn).single()
+      if (existing) throw new Error('Ang LRN na ito ay rehistrado na.')
 
       const { error: authError } = await supabase.auth.signUp({
         email: `${formData.lrn}@student.local`,
         password: formData.password,
       })
-
-      if (authError) throw new Error('May error sa paggawa ng account: ' + authError.message)
+      if (authError) throw new Error('Auth Error: ' + authError.message)
 
       const { error: dbError } = await supabase.from('students').insert({
         lrn: formData.lrn,
@@ -104,12 +67,11 @@ export default function Register({ onBack }: { onBack: () => void }) {
         deployment_area: formData.deploymentArea || formData.schoolName,
         password_hash: formData.password,
         status: 'Pending',
-        is_first_login: true // IDINAGDAG: Pipilitin silang mag-change password sa first login
+        is_first_login: true
       })
+      if (dbError) throw new Error('DB Error: ' + dbError.message)
 
-      if (dbError) throw new Error('May error sa pag-save ng info: ' + dbError.message)
-
-      setSuccess('Matagumpay ang registration! Hintayin mo lang ang approval ng iyong Teacher.')
+      setSuccess('Matagumpay ang registration! Hintayin mo ang approval ng iyong Teacher.')
       setTimeout(() => onBack(), 3000)
 
     } catch (err: any) {
@@ -178,13 +140,13 @@ export default function Register({ onBack }: { onBack: () => void }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Field (Auto-filled)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Field (Auto)</label>
               <input type="text" readOnly value={formData.field} className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-600 outline-none cursor-not-allowed" />
             </div>
             <div>
               {isEducation ? (
                 <>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">School (Para sa Education)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">School</label>
                   <select required value={formData.schoolName} onChange={e => setFormData({...formData, schoolName: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <option value="" disabled>Select School</option>
                     {SCHOOLS.map(s => <option key={s} value={s}>{s}</option>)}
