@@ -75,12 +75,32 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [feedback, setFeedback] = useState('')
   const [savingGrades, setSavingGrades] = useState(false)
 
-  // Rubric Categories
+  // Rubric Categories WITH DESCRIPTIONS
   const RUBRIC_CATEGORIES = [
-    { id: 'content', name: 'Content & Substance', max: 30 },
-    { id: 'organization', name: 'Organization & Clarity', max: 20 },
-    { id: 'reflection', name: 'Depth of Reflection', max: 30 },
-    { id: 'mechanics', name: 'Grammar & Mechanics', max: 20 },
+    { 
+      id: 'content', 
+      name: 'Content & Substance', 
+      max: 30,
+      description: 'Detalye ng karanasan, mga natutunan, at mga gawain sa araw na iyon.'
+    },
+    { 
+      id: 'organization', 
+      name: 'Organization & Clarity', 
+      max: 20,
+      description: 'Maayos ba ang daloy ng kwento? Madaling maintindihan ang mga pangyayari?'
+    },
+    { 
+      id: 'reflection', 
+      name: 'Depth of Reflection', 
+      max: 30,
+      description: 'May malalim bang pagninilay (realizations) sa mga nangyari? Ano ang natutunan mo?'
+    },
+    { 
+      id: 'mechanics', 
+      name: 'Grammar & Mechanics', 
+      max: 20,
+      description: 'Wastong baybay, bantas, at paggamit ng salita.'
+    },
   ]
 
   const fetchStudents = async () => {
@@ -207,7 +227,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     document.body.removeChild(link)
   }
 
-  // === DIARY GRADING FUNCTIONS ===
   const openGradingModal = (entry: DiaryRecord) => {
     setSelectedDiaryEntry(entry)
     setGradingScores({})
@@ -220,14 +239,12 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setSavingGrades(true)
 
     try {
-      // Compute total
       let totalScore = 0
       RUBRIC_CATEGORIES.forEach(cat => {
         const score = parseFloat(gradingScores[cat.id] || '0')
         totalScore += score
       })
 
-      // 1. Save individual rubric scores
       for (const cat of RUBRIC_CATEGORIES) {
         const scoreValue = parseFloat(gradingScores[cat.id] || '0')
         await supabase.from('diary_scores').upsert({
@@ -237,13 +254,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         }, { onConflict: 'diary_id,criteria' })
       }
 
-      // 2. Update the diary record
       await supabase.from('diary').update({
         rubric_score: totalScore,
         teacher_feedback: feedback
       }).eq('id', selectedDiaryEntry.id)
 
-      // Refresh diary list
       if (selectedStudent) {
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
         if (data) setDiary(data)
@@ -496,7 +511,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                           {entry.image_urls?.length > 0 && <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 font-medium"><ImageIcon size={14} /> {entry.image_urls.length} image(s) attached</div>}
                         </div>
                         
-                        {/* Score Display at Grade Button */}
                         <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
                           {entry.rubric_score ? (
                             <span className="font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded text-sm flex items-center gap-1"><Star size={14} /> Score: {entry.rubric_score}/100</span>
@@ -572,13 +586,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             </div>
             
             <div className="p-6 overflow-y-auto space-y-4 bg-gray-50/50">
-              {/* Rubric Inputs */}
               {RUBRIC_CATEGORIES.map(cat => (
                 <div key={cat.id} className="bg-white/80 p-4 rounded-xl border border-white">
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex justify-between items-center mb-1">
                     <label className="text-sm font-bold text-gray-700">{cat.name}</label>
                     <span className="text-xs font-medium text-gray-500">Max: {cat.max}</span>
                   </div>
+                  <p className="text-xs text-gray-500 mb-2 italic">{cat.description}</p>
                   <input 
                     type="number" 
                     min="0" 
@@ -591,7 +605,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                 </div>
               ))}
 
-              {/* Feedback */}
               <div className="bg-white/80 p-4 rounded-xl border border-white">
                 <label className="block text-sm font-bold text-gray-700 mb-2">Teacher's Feedback</label>
                 <textarea 
