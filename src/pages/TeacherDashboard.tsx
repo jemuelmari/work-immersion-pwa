@@ -36,6 +36,7 @@ interface DiaryRecord {
 
 interface RequirementRecord {
   id: string;
+  requirement_name: string;
   file_name: string;
   file_url: string;
   uploaded_at: string;
@@ -46,14 +47,10 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  
-  // Filter States
   const [filterSection, setFilterSection] = useState('All')
   const [filterSex, setFilterSex] = useState('All')
-
   const [activeTab, setActiveTab] = useState<'directory' | 'approvals'>('directory')
   
-  // Modal States
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [modalTab, setModalTab] = useState<'attendance' | 'diary' | 'requirements'>('attendance')
   
@@ -67,18 +64,12 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
   const fetchStudents = async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('students')
-      .select('*')
-      .order('last_name', { ascending: true })
-    
+    const { data, error } = await supabase.from('students').select('*').order('last_name', { ascending: true })
     if (!error && data) setStudents(data)
     setLoading(false)
   }
 
-  useEffect(() => {
-    fetchStudents()
-  }, [])
+  useEffect(() => { fetchStudents() }, [])
 
   const handleApprove = async (lrn: string) => {
     const { error } = await supabase.from('students').update({ status: 'Approved' }).eq('lrn', lrn)
@@ -96,25 +87,24 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const approvedStudents = students.filter(s => s.status === 'Approved')
   const pendingStudents = students.filter(s => s.status === 'Pending')
 
-  // --- FILTER LOGIC ---
+  // --- FILTER AND SORT LOGIC ---
   const filteredStudents = approvedStudents.filter(s => {
-    const matchesSearch = s.last_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          s.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          s.lrn.includes(searchTerm);
+    const matchesSearch = s.last_name.toLowerCase().includes(searchTerm.toLowerCase()) || s.first_name.toLowerCase().includes(searchTerm.toLowerCase()) || s.lrn.includes(searchTerm);
     const matchesSection = filterSection === 'All' || s.section === filterSection;
     const matchesSex = filterSex === 'All' || s.sex === filterSex;
-    
     return matchesSearch && matchesSection && matchesSex;
+  }).sort((a, b) => {
+    if (a.sex !== b.sex) return a.sex.localeCompare(b.sex);
+    if (a.last_name !== b.last_name) return a.last_name.localeCompare(b.last_name);
+    return a.first_name.localeCompare(b.first_name);
   })
 
-  // --- EXPORT TO CSV FUNCTION ---
+  // --- EXPORT STUDENT LIST ---
   const handleExportStudents = () => {
     let csvContent = "LRN,Last Name,First Name,Middle Name,Sex,Section,Field,Course,Deployment Area\n"
-    
     filteredStudents.forEach(s => {
       csvContent += `${s.lrn},"${s.last_name}","${s.first_name}","${s.middle_name || ''}",${s.sex},${s.section},${s.field},${s.course},${s.deployment_area}\n`
     })
-
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement("a")
     link.setAttribute("href", URL.createObjectURL(blob))
@@ -224,17 +214,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
       </div>
 
       <div className="max-w-5xl mx-auto p-4 space-y-4">
-        
-        {/* TABS */}
         <div className="flex flex-wrap gap-2 border-b border-gray-300">
           <button onClick={() => setActiveTab('directory')} className={`px-4 py-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'directory' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Users size={16} /> Student Directory</button>
           <button onClick={() => setActiveTab('approvals')} className={`px-4 py-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'approvals' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><UserPlus size={16} /> Approvals {pendingStudents.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length}</span>}</button>
-          
           <button onClick={onOpenScores} className="px-4 py-2 font-medium text-sm flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors ml-auto border-b-2 border-transparent"><CalendarCheck size={16} /> Manage Scores</button>
           <button onClick={onOpenAnnouncements} className="px-4 py-2 font-medium text-sm flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors border-b-2 border-transparent"><BookOpen size={16} /> Announcements</button>
         </div>
 
-        {/* DIRECTORY TAB */}
         {activeTab === 'directory' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -243,28 +229,23 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              
-              {/* TOOLBAR WITH FILTERS AND EXPORT */}
               <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                     <input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-64" />
                   </div>
-                  
                   <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
                     <option value="All">All Sections</option>
                     <option value="12 GAS">12 GAS</option>
                     <option value="12 HUMSS">12 HUMSS</option>
                   </select>
-
                   <select value={filterSex} onChange={e => setFilterSex(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
                     <option value="All">All Sex</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                   </select>
                 </div>
-
                 <button onClick={handleExportStudents} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors">
                   <Download size={16} /> Export List
                 </button>
@@ -313,7 +294,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
           </>
         )}
 
-        {/* APPROVALS TAB */}
         {activeTab === 'approvals' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-4 border-b border-gray-200 bg-gray-50"><h2 className="font-bold text-gray-800">Pending Student Registrations</h2></div>
@@ -342,7 +322,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         )}
       </div>
 
-      {/* Student Modal (Pareho pa rin, walang binago) */}
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
@@ -406,22 +385,42 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                 )
               ) : (
                 requirements.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang na-upload na requirements.</div> : (
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="divide-y divide-gray-100">
-                      {requirements.map(req => (
-                        <div key={req.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
-                          <div className="flex items-center gap-3">
-                            <FileText className="text-blue-500" size={20} />
-                            <div>
-                              <p className="font-medium text-sm text-gray-800">{req.file_name}</p>
-                              <p className="text-xs text-gray-500">{new Date(req.uploaded_at).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                          <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:underline">View File</a>
-                        </div>
-                      ))}
+                  <>
+                    <div className="mb-4 flex justify-end">
+                      <button 
+                        onClick={() => {
+                          requirements.forEach(req => {
+                            const safeName = req.requirement_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Document'
+                            const fileName = `${selectedStudent.lrn}_${selectedStudent.last_name}_${selectedStudent.first_name}_${safeName}.pdf`
+                            const link = document.createElement('a')
+                            link.href = req.file_url
+                            link.download = fileName
+                            link.target = '_blank'
+                            link.click()
+                          })
+                        }}
+                        className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 flex items-center gap-2"
+                      >
+                        <Download size={16} /> Download All Files
+                      </button>
                     </div>
-                  </div>
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                      <div className="divide-y divide-gray-100">
+                        {requirements.map(req => (
+                          <div key={req.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                            <div className="flex items-center gap-3">
+                              <FileText className="text-blue-500" size={20} />
+                              <div>
+                                <p className="font-medium text-sm text-gray-800">{req.requirement_name}</p>
+                                <p className="text-xs text-gray-500">{req.file_name} • {new Date(req.uploaded_at).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                            <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:underline">View</a>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
                 )
               )}
             </div>
