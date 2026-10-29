@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface Student {
@@ -38,6 +38,7 @@ interface DiaryRecord {
   image_urls: string[];
   rubric_score: number;
   teacher_feedback: string;
+  is_locked: boolean; // BAGONG FIELD
 }
 
 interface RequirementRecord {
@@ -175,6 +176,21 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     } else { alert("Error sa pag-reset: " + error.message) }
   }
 
+  // === DIARY UNLOCK FUNCTION ===
+  const handleUnlockDiary = async (entryId: string) => {
+    if (!confirm("Sigurado ka bang gusto mong i-unlock ito? Makakapag-edit na ulit ang estudyante.")) return
+    const { error } = await supabase.from('diary').update({ is_locked: false }).eq('id', entryId)
+    if (!error) {
+      if (selectedStudent) {
+        const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
+        if (data) setDiary(data)
+      }
+      alert("Na-unlock na ang diary entry.")
+    } else {
+      alert("Error sa pag-unlock: " + error.message)
+    }
+  }
+
   const calculateTotalHours = () => {
     let total = 0
     attendance.forEach(rec => { total += parseFloat(rec.total_hours?.toString() || '0') })
@@ -218,20 +234,18 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setIsGradingModalOpen(true)
   }
 
-  // === ITO ANG AYOS NA GRADING LOGIC ===
+  // === FIX: I-save ang grade AT i-lock ang diary ===
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
     setSavingGrades(true)
 
     try {
-      // Compute total score
       let totalScore = 0
       RUBRIC_CATEGORIES.forEach(cat => {
         const score = parseFloat(gradingScores[cat.id] || '0')
         totalScore += score
       })
 
-      // 1. Save individual rubric scores
       for (const cat of RUBRIC_CATEGORIES) {
         const scoreValue = parseFloat(gradingScores[cat.id] || '0')
         await supabase.from('diary_scores').upsert({
@@ -241,25 +255,26 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         }, { onConflict: 'diary_id,criteria' })
       }
 
-      // 2. I-UPDATE TALAGA ANG DIARY TABLE
+      // I-UPDATE ANG DIARY TABLE AT I-SET ANG is_locked = true
       const { error: updateError } = await supabase
         .from('diary')
         .update({
           rubric_score: totalScore,
-          teacher_feedback: feedback
+          teacher_feedback: feedback,
+          is_locked: true // I-LOCK ANG DIARY
         })
         .eq('id', selectedDiaryEntry.id)
 
       if (updateError) throw updateError
 
-      // 3. I-REFRESH ANG DIARY LIST PARA LUMABAS AGAD
+      // I-refresh ang diary list
       if (selectedStudent) {
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
         if (data) setDiary(data)
       }
 
       setIsGradingModalOpen(false)
-      alert('Grades saved successfully!')
+      alert('Grades saved successfully! Naka-lock na ang diary.')
 
     } catch (err: any) {
       alert('Error saving grades: ' + err.message)
@@ -495,7 +510,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                 diary.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang diary entry.</div> : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {diary.map(entry => (
-                      <div key={entry.id} onClick={() => openDiaryView(entry)} className="bg-white/80 p-5 rounded-2xl shadow-sm border border-white flex flex-col justify-between hover:border-blue-300 cursor-pointer transition-all hover:scale-[1.02]">
+                      <div key={entry.id} onClick={() => openDiaryView(entry)} className={`bg-white/80 p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-all ${entry.is_locked ? 'border-green-300 bg-green-50/30' : 'border-white hover:border-blue-300 cursor-pointer hover:scale-[1.02]'}`}>
                         <div>
                           <div className="flex justify-between items-center mb-3">
                             <span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg text-sm">Day {entry.day_number}</span>
@@ -505,15 +520,26 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                           {entry.image_urls?.length > 0 && <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 font-medium"><ImageIcon size={14} /> {entry.image_urls.length} image(s) attached</div>}
                         </div>
                         
-                        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                          {entry.rubric_score ? (
-                            <span className="font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded text-sm flex items-center gap-1"><Star size={14} /> Score: {entry.rubric_score}/100</span>
-                          ) : (
-                            <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>
+                        <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            {entry.rubric_score ? (
+                              <span className="font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded text-sm flex items-center gap-1"><Star size={14} /> Score: {entry.rubric_score}/100</span>
+                            ) : (
+                              <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>
+                            )}
+                            
+                            {!entry.is_locked && (
+                              <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                                {entry.rubric_score ? 'Re-grade' : 'Grade'}
+                              </button>
+                            )}
+                          </div>
+                          
+                          {entry.is_locked && (
+                            <button onClick={(e) => { e.stopPropagation(); handleUnlockDiary(entry.id); }} className="text-xs bg-orange-50 text-orange-600 font-bold px-3 py-1.5 rounded-lg hover:bg-orange-100 transition-colors w-full flex items-center justify-center gap-1">
+                              <Unlock size={12} /> Unlock for Re-upload
+                            </button>
                           )}
-                          <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                            {entry.rubric_score ? 'Re-grade' : 'Grade'}
-                          </button>
                         </div>
                       </div>
                     ))}
@@ -567,7 +593,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         </div>
       )}
 
-      {/* FULL DIARY VIEW MODAL */}
       {isViewingDiary && selectedDiaryEntry && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[75]">
           <div className="glass-card rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
@@ -591,7 +616,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         </div>
       )}
 
-      {/* GRADING MODAL */}
       {isGradingModalOpen && selectedDiaryEntry && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
           <div className="glass-card rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
