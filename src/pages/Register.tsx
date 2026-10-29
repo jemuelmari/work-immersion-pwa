@@ -20,7 +20,6 @@ const FIELD_TO_AREAS: Record<string, string[]> = {
 
 const SCHOOLS = ['Sta. Cruz Elementary School', 'Iba Elementary School', 'San Jose National High School', 'Other School']
 
-// Function para i-normalize ang pangalan (Capitalize each word)
 const normalizeName = (str: string) => {
   return str.trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())
 }
@@ -35,7 +34,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
     firstName: '',
     lastName: '',
     middleName: '',
-    sex: 'Male', // Bagong field
+    sex: 'Male',
     section: '12 GAS',
     course: 'Nursing',
     field: 'Health',
@@ -43,6 +42,9 @@ export default function Register({ onBack }: { onBack: () => void }) {
     schoolName: '',
     password: ''
   })
+
+  // Check kung 12 digits ang LRN
+  const isLrnValid = formData.lrn.length === 12
 
   useEffect(() => {
     const selectedField = COURSE_TO_FIELD[formData.course]
@@ -57,6 +59,13 @@ export default function Register({ onBack }: { onBack: () => void }) {
     e.preventDefault()
     setError('')
     setSuccess('')
+
+    // Strict Check Bago Mag-submit
+    if (formData.lrn.length !== 12) {
+      setError('Ang LRN ay dapat eksaktong 12 digits. Ikaw ay may ' + formData.lrn.length + ' digits.')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -69,7 +78,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
       })
       if (authError) throw new Error('Auth Error: ' + authError.message)
 
-      // Auto-capitalize ang names bago i-save
       const normalizedLastName = normalizeName(formData.lastName)
       const normalizedFirstName = normalizeName(formData.firstName)
       const normalizedMiddleName = normalizeName(formData.middleName)
@@ -79,7 +87,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
         first_name: normalizedFirstName, 
         last_name: normalizedLastName,
         middle_name: normalizedMiddleName, 
-        sex: formData.sex, // Bagong field
+        sex: formData.sex,
         section: formData.section, 
         field: formData.field,
         course: formData.course, 
@@ -124,8 +132,24 @@ export default function Register({ onBack }: { onBack: () => void }) {
 
         <form onSubmit={handleRegister} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">LRN (12 Digits)</label>
-            <input required type="text" maxLength={12} value={formData.lrn} onChange={e => setFormData({...formData, lrn: e.target.value.replace(/\D/g, '')})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="123456789012" />
+            <label className="block text-sm font-medium text-gray-700 mb-1 flex justify-between items-center">
+              <span>LRN (12 Digits)</span>
+              <span className={`text-xs font-bold ${isLrnValid ? 'text-green-600' : 'text-red-500'}`}>
+                {formData.lrn.length}/12
+              </span>
+            </label>
+            <input 
+              required 
+              type="text" 
+              maxLength={12} 
+              value={formData.lrn} 
+              onChange={e => setFormData({...formData, lrn: e.target.value.replace(/\D/g, '').slice(0, 12)})} 
+              className={`w-full px-4 py-2.5 rounded-xl outline-none transition-all border ${
+                isLrnValid ? 'border-green-300 bg-green-50/30' : 'border-red-300 bg-red-50/30'
+              }`}
+              placeholder="123456789012" 
+            />
+            <p className="text-xs text-gray-500 mt-1">Dapat eksaktong 12 digits.</p>
           </div>
           
           <div className="grid grid-cols-2 gap-3">
@@ -200,7 +224,16 @@ export default function Register({ onBack }: { onBack: () => void }) {
             <input required type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="••••••••" />
           </div>
 
-          <button disabled={loading} type="submit" className="glass-button-primary w-full text-white font-bold py-3 rounded-xl transition-all flex justify-center items-center mt-6">
+          {/* DISABLED ANG BUTTON KUNG HINDI 12 DIGITS */}
+          <button 
+            disabled={loading || !isLrnValid} 
+            type="submit" 
+            className={`w-full font-bold py-3 rounded-xl transition-all flex justify-center items-center mt-6 ${
+              isLrnValid 
+                ? 'glass-button-primary text-white' 
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
             {loading ? <Loader2 className="animate-spin" size={20} /> : 'Register'}
           </button>
         </form>
