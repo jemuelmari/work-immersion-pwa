@@ -7,5 +7,54 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f3f4f6;
+  background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%); /* Soft blue gradient background */
+  min-height: 100vh;
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+}
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.glass-button-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+  transition: all 0.3s ease;
+}
+.glass-button-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+}
+
+.glass-button-secondary {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+  transition: all 0.2s ease;
+}
+.glass-button-secondary:hover {
+  background: rgba(255, 255, 255, 0.9);
 }
