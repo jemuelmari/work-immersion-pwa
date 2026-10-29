@@ -44,7 +44,17 @@ export default function ChangePassword({ onComplete }: { onComplete: () => void 
       
       if (dbError) throw dbError
 
-      onComplete() // Lipat sa Dashboard
+      // 3. IMPORTANTE: I-update ang local storage para makapasok na sa dashboard
+      const savedUser = localStorage.getItem('wi_user')
+      if (savedUser) {
+        const parsedUser = JSON.parse(savedUser)
+        parsedUser.isFirstLogin = false
+        localStorage.setItem('wi_user', JSON.stringify(parsedUser))
+      }
+
+      // 4. I-refresh ang page para makalipat sa Dashboard
+      window.location.reload()
+      
     } catch (err: any) {
       setError(err.message)
     } finally {
