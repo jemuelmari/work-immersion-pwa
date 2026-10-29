@@ -87,7 +87,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const approvedStudents = students.filter(s => s.status === 'Approved')
   const pendingStudents = students.filter(s => s.status === 'Pending')
 
-  // --- FILTER AND SORT LOGIC ---
   const filteredStudents = approvedStudents.filter(s => {
     const matchesSearch = s.last_name.toLowerCase().includes(searchTerm.toLowerCase()) || s.first_name.toLowerCase().includes(searchTerm.toLowerCase()) || s.lrn.includes(searchTerm);
     const matchesSection = filterSection === 'All' || s.section === filterSection;
@@ -99,7 +98,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     return a.first_name.localeCompare(b.first_name);
   })
 
-  // --- EXPORT STUDENT LIST ---
   const handleExportStudents = () => {
     let csvContent = "LRN,Last Name,First Name,Middle Name,Sex,Section,Field,Course,Deployment Area\n"
     filteredStudents.forEach(s => {
@@ -200,91 +198,105 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 relative">
-      <div className="bg-blue-600 text-white p-4 sticky top-0 z-10 shadow-md">
+    <div className="min-h-screen relative pb-10">
+      {/* HEADER */}
+      <div className="glass-panel p-4 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto flex justify-between items-center">
           <div>
-            <h1 className="font-bold text-lg">Teacher Dashboard</h1>
-            <p className="text-blue-200 text-xs">{user?.role} | {user?.name}</p>
+            <h1 className="font-bold text-lg text-gray-800">Teacher Dashboard</h1>
+            <p className="text-gray-500 text-xs font-medium">{user?.role} | {user?.name}</p>
           </div>
-          <button onClick={logout} className="bg-blue-700 hover:bg-blue-800 p-2 rounded-lg transition-colors flex items-center gap-2 text-sm">
+          <button onClick={logout} className="bg-white/60 hover:bg-white text-red-600 px-4 py-2 rounded-xl transition-colors flex items-center gap-2 text-sm font-bold shadow-sm border border-white/50">
             <LogOut size={16} /> Logout
           </button>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto p-4 space-y-4">
-        <div className="flex flex-wrap gap-2 border-b border-gray-300">
-          <button onClick={() => setActiveTab('directory')} className={`px-4 py-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'directory' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Users size={16} /> Student Directory</button>
-          <button onClick={() => setActiveTab('approvals')} className={`px-4 py-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'approvals' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><UserPlus size={16} /> Approvals {pendingStudents.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length}</span>}</button>
-          <button onClick={onOpenScores} className="px-4 py-2 font-medium text-sm flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors ml-auto border-b-2 border-transparent"><CalendarCheck size={16} /> Manage Scores</button>
-          <button onClick={onOpenAnnouncements} className="px-4 py-2 font-medium text-sm flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors border-b-2 border-transparent"><BookOpen size={16} /> Announcements</button>
+      <div className="max-w-5xl mx-auto p-4 space-y-6 mt-2">
+        
+        {/* TABS */}
+        <div className="flex flex-wrap gap-2 p-1.5 bg-white/40 backdrop-blur-md rounded-2xl border border-white/50 w-fit">
+          <button onClick={() => setActiveTab('directory')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'directory' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><Users size={16} /> Directory</button>
+          <button onClick={() => setActiveTab('approvals')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'approvals' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><UserPlus size={16} /> Approvals {pendingStudents.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length}</span>}</button>
         </div>
 
+        {/* QUICK ACTIONS */}
+        <div className="flex gap-3">
+          <button onClick={onOpenScores} className="glass-card px-5 py-3 rounded-2xl flex items-center gap-2 font-bold text-gray-700 hover:bg-white/90 transition-colors"><CalendarCheck size={18} className="text-blue-600" /> Manage Scores</button>
+          <button onClick={onOpenAnnouncements} className="glass-card px-5 py-3 rounded-2xl flex items-center gap-2 font-bold text-gray-700 hover:bg-white/90 transition-colors"><BookOpen size={18} className="text-blue-600" /> Announcements</button>
+        </div>
+
+        {/* DIRECTORY TAB */}
         {activeTab === 'directory' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4"><div className="bg-blue-100 text-blue-600 p-3 rounded-lg"><Users size={24} /></div><div><p className="text-sm text-gray-500">Approved Students</p><p className="text-2xl font-bold text-gray-800">{approvedStudents.length}</p></div></div>
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4"><div className="bg-green-100 text-green-600 p-3 rounded-lg"><CalendarCheck size={24} /></div><div><p className="text-sm text-gray-500">Sections</p><p className="text-2xl font-bold text-gray-800">12 GAS & 12 HUMSS</p></div></div>
+              <div className="glass-card p-6 rounded-3xl flex items-center gap-5">
+                <div className="bg-blue-100 text-blue-600 p-4 rounded-2xl"><Users size={28} /></div>
+                <div><p className="text-sm text-gray-500 font-bold">Approved Students</p><p className="text-3xl font-extrabold text-gray-800">{approvedStudents.length}</p></div>
+              </div>
+              <div className="glass-card p-6 rounded-3xl flex items-center gap-5">
+                <div className="bg-green-100 text-green-600 p-4 rounded-2xl"><CalendarCheck size={28} /></div>
+                <div><p className="text-sm text-gray-500 font-bold">Sections</p><p className="text-3xl font-extrabold text-gray-800">12 GAS & 12 HUMSS</p></div>
+              </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative">
+            <div className="glass-card rounded-3xl overflow-hidden">
+              <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                  <div className="relative w-full md:w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-64" />
+                    <input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="glass-input w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none" />
                   </div>
-                  <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
+                  <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none">
                     <option value="All">All Sections</option>
                     <option value="12 GAS">12 GAS</option>
                     <option value="12 HUMSS">12 HUMSS</option>
                   </select>
-                  <select value={filterSex} onChange={e => setFilterSex(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
+                  <select value={filterSex} onChange={e => setFilterSex(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none">
                     <option value="All">All Sex</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                   </select>
                 </div>
-                <button onClick={handleExportStudents} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors">
+                <button onClick={handleExportStudents} className="bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-green-200 transition-colors w-full md:w-auto justify-center">
                   <Download size={16} /> Export List
                 </button>
               </div>
               
-              {loading ? <div className="p-8 text-center text-gray-500">Loading students...</div> : (
+              {loading ? <div className="p-10 text-center text-gray-500 font-medium">Loading students...</div> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-white border-b border-gray-200 text-gray-500">
+                    <thead className="bg-white/30 border-b border-white/50 text-gray-600">
                       <tr>
-                        <th className="px-4 py-3 font-medium">LRN</th>
-                        <th className="px-4 py-3 font-medium">Last Name</th>
-                        <th className="px-4 py-3 font-medium">First Name</th>
-                        <th className="px-4 py-3 font-medium">M.I.</th>
-                        <th className="px-4 py-3 font-medium">Sex</th>
-                        <th className="px-4 py-3 font-medium">Section</th>
-                        <th className="px-4 py-3 font-medium">Course</th>
-                        <th className="px-4 py-3 font-medium">Area</th>
-                        <th className="px-4 py-3 font-medium text-right">Action</th>
+                        <th className="px-5 py-4 font-bold">LRN</th>
+                        <th className="px-5 py-4 font-bold">Last Name</th>
+                        <th className="px-5 py-4 font-bold">First Name</th>
+                        <th className="px-5 py-4 font-bold">M.I.</th>
+                        <th className="px-5 py-4 font-bold">Sex</th>
+                        <th className="px-5 py-4 font-bold">Section</th>
+                        <th className="px-5 py-4 font-bold">Course</th>
+                        <th className="px-5 py-4 font-bold">Area</th>
+                        <th className="px-5 py-4 font-bold text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-white/40">
                       {filteredStudents.map(student => (
-                        <tr key={student.lrn} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3 font-mono text-gray-600">{student.lrn}</td>
-                          <td className="px-4 py-3 font-medium text-gray-800">{student.last_name}</td>
-                          <td className="px-4 py-3 text-gray-800">{student.first_name}</td>
-                          <td className="px-4 py-3 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td>
-                          <td className="px-4 py-3 text-gray-600">{student.sex}</td>
-                          <td className="px-4 py-3"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{student.section}</span></td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">{student.course}</td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">{student.deployment_area}</td>
-                          <td className="px-4 py-3 text-right">
-                            <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-medium text-sm">View Record</button>
+                        <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
+                          <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td>
+                          <td className="px-5 py-4 font-bold text-gray-800">{student.last_name}</td>
+                          <td className="px-5 py-4 text-gray-800">{student.first_name}</td>
+                          <td className="px-5 py-4 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td>
+                          <td className="px-5 py-4 text-gray-600">{student.sex}</td>
+                          <td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td>
+                          <td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.course}</td>
+                          <td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.deployment_area}</td>
+                          <td className="px-5 py-4 text-right">
+                            <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-bold text-sm bg-blue-50/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">View Record</button>
                           </td>
                         </tr>
                       ))}
                       {filteredStudents.length === 0 && (
-                        <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">Walang nahanap na estudyante base sa filter.</td></tr>
+                        <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-500 font-medium">Walang nahanap na estudyante base sa filter.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -294,24 +306,25 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
           </>
         )}
 
+        {/* APPROVALS TAB */}
         {activeTab === 'approvals' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-200 bg-gray-50"><h2 className="font-bold text-gray-800">Pending Student Registrations</h2></div>
-            {pendingStudents.length === 0 ? <div className="p-8 text-center text-gray-500">Walang pending na estudyante.</div> : (
-              <table className="w-full text-left text-sm">
-                <thead className="bg-white border-b border-gray-200 text-gray-500">
-                  <tr><th className="px-6 py-3 font-medium">LRN</th><th className="px-6 py-3 font-medium">Name</th><th className="px-6 py-3 font-medium">Section</th><th className="px-6 py-3 font-medium">Field & Course</th><th className="px-6 py-3 font-medium text-right">Action</th></tr>
+          <div className="glass-card rounded-3xl overflow-hidden">
+            <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Student Registrations</h2></div>
+            {pendingStudents.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na estudyante.</div> : (
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-white/30 border-b border-white/50 text-gray-600">
+                  <tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Name</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Field & Course</th><th className="px-5 py-4 font-bold text-right">Action</th></tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-white/40">
                   {pendingStudents.map(student => (
-                    <tr key={student.lrn} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 font-mono text-gray-600">{student.lrn}</td>
-                      <td className="px-6 py-4 font-medium text-gray-800">{student.last_name}, {student.first_name}</td>
-                      <td className="px-6 py-4"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{student.section}</span></td>
-                      <td className="px-6 py-4 text-gray-600 text-xs">{student.field} <br/> {student.course}</td>
-                      <td className="px-6 py-4 text-right flex justify-end gap-2">
-                        <button onClick={() => handleApprove(student.lrn)} className="text-green-600 hover:text-green-800 font-medium text-sm flex items-center gap-1 bg-green-50 px-3 py-1 rounded"><CheckCircle size={16} /> Approve</button>
-                        <button onClick={() => handleReject(student.lrn)} className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center gap-1 bg-red-50 px-3 py-1 rounded"><XCircle size={16} /> Reject</button>
+                    <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
+                      <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td>
+                      <td className="px-5 py-4 font-bold text-gray-800">{student.last_name}, {student.first_name}</td>
+                      <td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td>
+                      <td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.field} <br/> {student.course}</td>
+                      <td className="px-5 py-4 text-right flex justify-end gap-2">
+                        <button onClick={() => handleApprove(student.lrn)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-green-200 transition-colors"><CheckCircle size={16} /> Approve</button>
+                        <button onClick={() => handleReject(student.lrn)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-red-200 transition-colors"><XCircle size={16} /> Reject</button>
                       </td>
                     </tr>
                   ))}
@@ -322,48 +335,49 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         )}
       </div>
 
+      {/* STUDENT MODAL */}
       {selectedStudent && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-start">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-white/50 bg-white/40 flex justify-between items-start">
               <div>
-                <h3 className="text-lg font-bold text-gray-800">Student Records</h3>
-                <p className="text-sm text-gray-500">{selectedStudent.last_name}, {selectedStudent.first_name} ({selectedStudent.lrn})</p>
-                <p className="text-xs text-blue-600 font-medium mt-1">{selectedStudent.field} | {selectedStudent.course} | {selectedStudent.deployment_area}</p>
+                <h3 className="text-xl font-extrabold text-gray-800">Student Records</h3>
+                <p className="text-sm text-gray-600 font-medium mt-1">{selectedStudent.last_name}, {selectedStudent.first_name} ({selectedStudent.lrn})</p>
+                <p className="text-xs text-blue-600 font-bold mt-1 bg-blue-50 px-2 py-1 rounded w-fit">{selectedStudent.field} | {selectedStudent.course} | {selectedStudent.deployment_area}</p>
               </div>
-              <button onClick={() => setSelectedStudent(null)} className="text-gray-400 hover:text-gray-600 p-2"><X size={24} /></button>
+              <button onClick={() => setSelectedStudent(null)} className="text-gray-400 hover:text-gray-600 p-2 bg-white/50 rounded-full transition-colors"><X size={20} /></button>
             </div>
 
-            <div className="flex border-b border-gray-100 px-6">
-              <button onClick={() => setModalTab('attendance')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${modalTab === 'attendance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><CalendarCheck size={16} /> Attendance (DTR)</button>
-              <button onClick={() => setModalTab('diary')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${modalTab === 'diary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><BookOpen size={16} /> Daily Diary</button>
-              <button onClick={() => setModalTab('requirements')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${modalTab === 'requirements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><FileText size={16} /> Requirements</button>
+            <div className="flex border-b border-white/50 px-6 bg-white/20">
+              <button onClick={() => setModalTab('attendance')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'attendance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><CalendarCheck size={18} /> Attendance (DTR)</button>
+              <button onClick={() => setModalTab('diary')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'diary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><BookOpen size={18} /> Daily Diary</button>
+              <button onClick={() => setModalTab('requirements')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'requirements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><FileText size={18} /> Requirements</button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
-              {loadingRecords ? <div className="text-center py-10 text-gray-500">Loading records...</div> : modalTab === 'attendance' ? (
-                attendance.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang attendance record.</div> : (
+            <div className="p-6 overflow-y-auto flex-1">
+              {loadingRecords ? <div className="text-center py-10 text-gray-500 font-medium">Loading records...</div> : modalTab === 'attendance' ? (
+                attendance.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang attendance record.</div> : (
                   <>
-                    <div className="mb-4 bg-white p-4 rounded-lg flex justify-between items-center shadow-sm border border-gray-200">
-                      <span className="font-medium text-gray-700">Total Rendered Hours:</span>
-                      <span className="text-2xl font-bold text-blue-600">{calculateTotalHours()} hrs</span>
+                    <div className="mb-6 bg-gradient-to-r from-blue-500 to-indigo-500 p-5 rounded-2xl flex justify-between items-center shadow-lg shadow-blue-200">
+                      <span className="font-bold text-white/90">Total Rendered Hours:</span>
+                      <span className="text-3xl font-extrabold text-white">{calculateTotalHours()} <span className="text-lg">hrs</span></span>
                     </div>
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                      <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 text-gray-500">
-                          <tr><th className="px-4 py-3 font-medium">Date</th><th className="px-4 py-3 font-medium">Time In</th><th className="px-4 py-3 font-medium">Time Out</th><th className="px-4 py-3 font-medium">Photos</th><th className="px-4 py-3 font-medium text-right">Total</th></tr>
+                    <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden">
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-white/80 border-b border-gray-100 text-gray-600">
+                          <tr><th className="px-5 py-3 font-bold">Date</th><th className="px-5 py-3 font-bold">Time In</th><th className="px-5 py-3 font-bold">Time Out</th><th className="px-5 py-3 font-bold">Photos</th><th className="px-5 py-3 font-bold text-right">Total</th></tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {attendance.map(rec => (
-                            <tr key={rec.id} className="hover:bg-gray-50">
-                              <td className="px-4 py-3 text-gray-700">{rec.date}</td>
-                              <td className="px-4 py-3 text-gray-600">{rec.time_in || '-'}</td>
-                              <td className="px-4 py-3 text-gray-600">{rec.time_out || '-'}</td>
-                              <td className="px-4 py-3 flex gap-2">
-                                {rec.time_in_photo && <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">In Photo</button>}
-                                {rec.time_out_photo && <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">Out Photo</button>}
+                            <tr key={rec.id} className="hover:bg-white transition-colors">
+                              <td className="px-5 py-3 text-gray-800 font-medium">{rec.date}</td>
+                              <td className="px-5 py-3 text-gray-600 font-mono text-xs">{rec.time_in || '-'}</td>
+                              <td className="px-5 py-3 text-gray-600 font-mono text-xs">{rec.time_out || '-'}</td>
+                              <td className="px-5 py-3 flex gap-2">
+                                {rec.time_in_photo && <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold hover:bg-blue-200 transition-colors">In Photo</button>}
+                                {rec.time_out_photo && <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-bold hover:bg-orange-200 transition-colors">Out Photo</button>}
                               </td>
-                              <td className="px-4 py-3 text-gray-800 font-bold text-right">{computeHours(rec.time_in, rec.time_out)} hrs</td>
+                              <td className="px-5 py-3 text-blue-600 font-extrabold text-right">{computeHours(rec.time_in, rec.time_out)} hrs</td>
                             </tr>
                           ))}
                         </tbody>
@@ -372,23 +386,25 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                   </>
                 )
               ) : modalTab === 'diary' ? (
-                diary.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang diary entry.</div> : (
-                  <div className="space-y-3">
+                diary.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang diary entry.</div> : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {diary.map(entry => (
-                      <div key={entry.id} onClick={() => setSelectedDiaryEntry(entry)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 cursor-pointer transition-all">
-                        <div className="flex justify-between items-center mb-2"><span className="font-bold text-blue-600">Day {entry.day_number}</span><span className="text-xs text-gray-500">{entry.date}</span></div>
-                        <p className="text-sm text-gray-700 line-clamp-2">{entry.entry_text}</p>
-                        {entry.image_urls?.length > 0 && <div className="mt-3 flex items-center gap-2 text-xs text-gray-500"><ImageIcon size={14} /> {entry.image_urls.length} image(s)</div>}
+                      <div key={entry.id} onClick={() => setSelectedDiaryEntry(entry)} className="bg-white/80 p-5 rounded-2xl shadow-sm border border-white hover:border-blue-300 cursor-pointer transition-all hover:scale-[1.02]">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg text-sm">Day {entry.day_number}</span>
+                          <span className="text-xs text-gray-500 font-medium">{entry.date}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 line-clamp-3 leading-relaxed">{entry.entry_text}</p>
+                        {entry.image_urls?.length > 0 && <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 font-medium"><ImageIcon size={14} /> {entry.image_urls.length} image(s) attached</div>}
                       </div>
                     ))}
                   </div>
                 )
               ) : (
-                requirements.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang na-upload na requirements.</div> : (
+                requirements.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang na-upload na requirements.</div> : (
                   <>
                     <div className="mb-4 flex justify-end">
-                      <button 
-                        onClick={() => {
+                      <button onClick={() => {
                           requirements.forEach(req => {
                             const safeName = req.requirement_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Document'
                             const fileName = `${selectedStudent.lrn}_${selectedStudent.last_name}_${selectedStudent.first_name}_${safeName}.pdf`
@@ -399,36 +415,33 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                             link.click()
                           })
                         }}
-                        className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 flex items-center gap-2"
-                      >
+                        className="text-sm bg-green-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-green-600 flex items-center gap-2 shadow-lg shadow-green-200 transition-colors">
                         <Download size={16} /> Download All Files
                       </button>
                     </div>
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                      <div className="divide-y divide-gray-100">
-                        {requirements.map(req => (
-                          <div key={req.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
-                            <div className="flex items-center gap-3">
-                              <FileText className="text-blue-500" size={20} />
-                              <div>
-                                <p className="font-medium text-sm text-gray-800">{req.requirement_name}</p>
-                                <p className="text-xs text-gray-500">{req.file_name} • {new Date(req.uploaded_at).toLocaleDateString()}</p>
-                              </div>
+                    <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden divide-y divide-gray-100">
+                      {requirements.map(req => (
+                        <div key={req.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><FileText size={20} /></div>
+                            <div>
+                              <p className="font-bold text-sm text-gray-800">{req.requirement_name}</p>
+                              <p className="text-xs text-gray-500 font-medium">{req.file_name} • {new Date(req.uploaded_at).toLocaleDateString()}</p>
                             </div>
-                            <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:underline">View</a>
                           </div>
-                        ))}
-                      </div>
+                          <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">View</a>
+                        </div>
+                      ))}
                     </div>
                   </>
                 )
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-100 bg-white flex justify-end gap-3 rounded-b-2xl">
-              <button onClick={() => setSelectedStudent(null)} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors">Close</button>
+            <div className="p-4 border-t border-white/50 bg-white/40 flex justify-end gap-3">
+              <button onClick={() => setSelectedStudent(null)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Close</button>
               {modalTab === 'attendance' && (
-                <button onClick={handleExportDTR} disabled={attendance.length === 0} className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-medium rounded-lg transition-colors flex items-center gap-2"><Download size={16} /> Export DTR</button>
+                <button onClick={handleExportDTR} disabled={attendance.length === 0} className="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold rounded-xl transition-colors flex items-center gap-2 shadow-sm"><Download size={16} /> Export DTR</button>
               )}
             </div>
           </div>
@@ -436,24 +449,27 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
       )}
 
       {selectedPhoto && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
-          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-lg object-contain" />
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
+          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-2xl object-contain shadow-2xl" />
         </div>
       )}
 
       {selectedDiaryEntry && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[70]">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-              <div><h3 className="font-bold text-gray-800">Day {selectedDiaryEntry.day_number} Diary</h3><p className="text-xs text-gray-500">{selectedDiaryEntry.date}</p></div>
-              <button onClick={() => setSelectedDiaryEntry(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center">
+              <div>
+                <h3 className="font-extrabold text-gray-800 text-lg">Day {selectedDiaryEntry.day_number} Diary</h3>
+                <p className="text-xs text-gray-500 font-medium">{selectedDiaryEntry.date}</p>
+              </div>
+              <button onClick={() => setSelectedDiaryEntry(null)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
             <div className="p-6 overflow-y-auto">
-              <p className="text-gray-700 whitespace-pre-wrap mb-4">{selectedDiaryEntry.entry_text}</p>
+              <p className="text-gray-700 whitespace-pre-wrap mb-6 leading-relaxed">{selectedDiaryEntry.entry_text}</p>
               {selectedDiaryEntry.image_urls?.length > 0 && (
-                <div className="space-y-2 mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-sm font-medium text-gray-500 mb-2">Attached Images:</p>
-                  {selectedDiaryEntry.image_urls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-lg border border-gray-200" />)}
+                <div className="space-y-3 mt-4 pt-4 border-t border-white/50">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attached Images</p>
+                  {selectedDiaryEntry.image_urls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-xl border border-white shadow-sm" />)}
                 </div>
               )}
             </div>
