@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { ArrowLeft, Save, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { ArrowLeft, Save, Image as ImageIcon, Loader2, Star } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 export default function StudentDiary({ onBack }: { onBack: () => void }) {
@@ -13,6 +13,10 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [existingImages, setExistingImages] = useState<string[]>([])
   const [message, setMessage] = useState({ type: '', text: '' })
+  
+  // States para sa Grade
+  const [score, setScore] = useState<number | null>(null)
+  const [feedback, setFeedback] = useState<string | null>(null)
 
   const today = new Date().toLocaleDateString('en-CA')
 
@@ -23,9 +27,13 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
     if (data) {
       setEntryText(data.entry_text || '')
       setExistingImages(data.image_urls || [])
+      setScore(data.rubric_score)
+      setFeedback(data.teacher_feedback)
     } else {
       setEntryText('')
       setExistingImages([])
+      setScore(null)
+      setFeedback(null)
     }
     setLoading(false)
   }
@@ -58,6 +66,7 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
       }
     }
 
+    // Kapag nag-save ng bagong entry, hindi natin ginalaw ang score para hindi mawala
     const { error } = await supabase.from('diary').upsert({
       lrn: user?.id, day_number: dayNumber, date: today, entry_text: entryText, image_urls: uploadedUrls
     }, { onConflict: 'lrn,day_number' })
@@ -122,6 +131,29 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
             {imageFile && <p className="text-xs text-green-600 mt-2 font-medium">Napili: {imageFile.name}</p>}
           </div>
         </div>
+
+        {/* GRADE DISPLAY SECTION */}
+        {(score !== null || feedback) && (
+          <div className="glass-card p-6 rounded-3xl border-l-4 border-l-green-500 bg-green-50/30">
+            <h3 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2"><Star className="text-yellow-500" size={20} /> Teacher's Grade</h3>
+            
+            {score !== null && (
+              <div className="flex justify-between items-center mb-4 bg-white/60 p-4 rounded-xl">
+                <span className="font-bold text-gray-600">Total Score:</span>
+                <span className="text-3xl font-extrabold text-green-600">{score}<span className="text-lg text-gray-400">/100</span></span>
+              </div>
+            )}
+
+            {feedback && (
+              <div>
+                <p className="text-sm font-bold text-gray-600 mb-2">Feedback:</p>
+                <div className="bg-white/60 p-4 rounded-xl text-gray-700 italic text-sm whitespace-pre-wrap">
+                  "{feedback}"
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <button onClick={handleSave} disabled={saving || loading} className="glass-button-primary w-full text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50">
           {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
