@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { Loader2, User, GraduationCap } from 'lucide-react'
 
+// Idinagdag ang onGoToRegister prop
 export default function Login({ onGoToRegister }: { onGoToRegister: () => void }) {
   const { login } = useAuth()
   const [isTeacher, setIsTeacher] = useState(false)
