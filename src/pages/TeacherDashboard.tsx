@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface Student {
@@ -36,6 +36,8 @@ interface DiaryRecord {
   date: string;
   entry_text: string;
   image_urls: string[];
+  rubric_score: number;
+  teacher_feedback: string;
 }
 
 interface RequirementRecord {
@@ -66,6 +68,20 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [selectedDiaryEntry, setSelectedDiaryEntry] = useState<DiaryRecord | null>(null)
+
+  // State para sa Grading
+  const [isGradingModalOpen, setIsGradingModalOpen] = useState(false)
+  const [gradingScores, setGradingScores] = useState<Record<string, string>>({})
+  const [feedback, setFeedback] = useState('')
+  const [savingGrades, setSavingGrades] = useState(false)
+
+  // Rubric Categories
+  const RUBRIC_CATEGORIES = [
+    { id: 'content', name: 'Content & Substance', max: 30 },
+    { id: 'organization', name: 'Organization & Clarity', max: 20 },
+    { id: 'reflection', name: 'Depth of Reflection', max: 30 },
+    { id: 'mechanics', name: 'Grammar & Mechanics', max: 20 },
+  ]
 
   const fetchStudents = async () => {
     setLoading(true)
@@ -189,6 +205,58 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  // === DIARY GRADING FUNCTIONS ===
+  const openGradingModal = (entry: DiaryRecord) => {
+    setSelectedDiaryEntry(entry)
+    setGradingScores({})
+    setFeedback(entry.teacher_feedback || '')
+    setIsGradingModalOpen(true)
+  }
+
+  const handleSaveGrades = async () => {
+    if (!selectedDiaryEntry) return
+    setSavingGrades(true)
+
+    try {
+      // Compute total
+      let totalScore = 0
+      RUBRIC_CATEGORIES.forEach(cat => {
+        const score = parseFloat(gradingScores[cat.id] || '0')
+        totalScore += score
+      })
+
+      // 1. Save individual rubric scores
+      for (const cat of RUBRIC_CATEGORIES) {
+        const scoreValue = parseFloat(gradingScores[cat.id] || '0')
+        await supabase.from('diary_scores').upsert({
+          diary_id: selectedDiaryEntry.id,
+          criteria: cat.name,
+          score: scoreValue
+        }, { onConflict: 'diary_id,criteria' })
+      }
+
+      // 2. Update the diary record
+      await supabase.from('diary').update({
+        rubric_score: totalScore,
+        teacher_feedback: feedback
+      }).eq('id', selectedDiaryEntry.id)
+
+      // Refresh diary list
+      if (selectedStudent) {
+        const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
+        if (data) setDiary(data)
+      }
+
+      setIsGradingModalOpen(false)
+      alert('Grades saved successfully!')
+
+    } catch (err: any) {
+      alert('Error saving grades: ' + err.message)
+    } finally {
+      setSavingGrades(false)
+    }
   }
 
   return (
@@ -418,13 +486,27 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                 diary.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang diary entry.</div> : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {diary.map(entry => (
-                      <div key={entry.id} onClick={() => setSelectedDiaryEntry(entry)} className="bg-white/80 p-5 rounded-2xl shadow-sm border border-white hover:border-blue-300 cursor-pointer transition-all hover:scale-[1.02]">
-                        <div className="flex justify-between items-center mb-3">
-                          <span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg text-sm">Day {entry.day_number}</span>
-                          <span className="text-xs text-gray-500 font-medium">{entry.date}</span>
+                      <div key={entry.id} className="bg-white/80 p-5 rounded-2xl shadow-sm border border-white flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-center mb-3">
+                            <span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg text-sm">Day {entry.day_number}</span>
+                            <span className="text-xs text-gray-500 font-medium">{entry.date}</span>
+                          </div>
+                          <p className="text-sm text-gray-700 line-clamp-3 leading-relaxed">{entry.entry_text}</p>
+                          {entry.image_urls?.length > 0 && <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 font-medium"><ImageIcon size={14} /> {entry.image_urls.length} image(s) attached</div>}
                         </div>
-                        <p className="text-sm text-gray-700 line-clamp-3 leading-relaxed">{entry.entry_text}</p>
-                        {entry.image_urls?.length > 0 && <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 font-medium"><ImageIcon size={14} /> {entry.image_urls.length} image(s) attached</div>}
+                        
+                        {/* Score Display at Grade Button */}
+                        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                          {entry.rubric_score ? (
+                            <span className="font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded text-sm flex items-center gap-1"><Star size={14} /> Score: {entry.rubric_score}/100</span>
+                          ) : (
+                            <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>
+                          )}
+                          <button onClick={() => openGradingModal(entry)} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                            {entry.rubric_score ? 'Re-grade' : 'Grade'}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -477,32 +559,63 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         </div>
       )}
 
-      {selectedPhoto && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
-          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-2xl object-contain shadow-2xl" />
+      {/* GRADING MODAL */}
+      {isGradingModalOpen && selectedDiaryEntry && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center">
+              <div>
+                <h3 className="font-extrabold text-gray-800 text-lg">Grade Diary Entry</h3>
+                <p className="text-xs text-gray-500 font-medium">Day {selectedDiaryEntry.day_number} - {selectedDiaryEntry.date}</p>
+              </div>
+              <button onClick={() => setIsGradingModalOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-4 bg-gray-50/50">
+              {/* Rubric Inputs */}
+              {RUBRIC_CATEGORIES.map(cat => (
+                <div key={cat.id} className="bg-white/80 p-4 rounded-xl border border-white">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-sm font-bold text-gray-700">{cat.name}</label>
+                    <span className="text-xs font-medium text-gray-500">Max: {cat.max}</span>
+                  </div>
+                  <input 
+                    type="number" 
+                    min="0" 
+                    max={cat.max}
+                    value={gradingScores[cat.id] || ''} 
+                    onChange={(e) => setGradingScores({...gradingScores, [cat.id]: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-lg font-bold text-blue-600"
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+
+              {/* Feedback */}
+              <div className="bg-white/80 p-4 rounded-xl border border-white">
+                <label className="block text-sm font-bold text-gray-700 mb-2">Teacher's Feedback</label>
+                <textarea 
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none h-24"
+                  placeholder="Isulat ang feedback..."
+                ></textarea>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-white/50 bg-white/40 flex justify-end gap-3">
+              <button onClick={() => setIsGradingModalOpen(false)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Cancel</button>
+              <button onClick={handleSaveGrades} disabled={savingGrades} className="glass-button-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold disabled:opacity-50">
+                {savingGrades ? 'Nag-sa-save...' : 'Save Grades'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {selectedDiaryEntry && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
-          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
-            <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center">
-              <div>
-                <h3 className="font-extrabold text-gray-800 text-lg">Day {selectedDiaryEntry.day_number} Diary</h3>
-                <p className="text-xs text-gray-500 font-medium">{selectedDiaryEntry.date}</p>
-              </div>
-              <button onClick={() => setSelectedDiaryEntry(null)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button>
-            </div>
-            <div className="p-6 overflow-y-auto">
-              <p className="text-gray-700 whitespace-pre-wrap mb-6 leading-relaxed">{selectedDiaryEntry.entry_text}</p>
-              {selectedDiaryEntry.image_urls?.length > 0 && (
-                <div className="space-y-3 mt-4 pt-4 border-t border-white/50">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attached Images</p>
-                  {selectedDiaryEntry.image_urls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-xl border border-white shadow-sm" />)}
-                </div>
-              )}
-            </div>
-          </div>
+      {selectedPhoto && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
+          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-2xl object-contain shadow-2xl" />
         </div>
       )}
     </div>
