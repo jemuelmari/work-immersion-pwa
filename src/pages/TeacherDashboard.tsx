@@ -41,7 +41,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [feedback, setFeedback] = useState('')
   const [savingGrades, setSavingGrades] = useState(false)
 
-  // Edit Student State
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
   const [editFormData, setEditFormData] = useState<Student | null>(null)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
@@ -151,7 +150,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const approvedStudents = students.filter(s => s.status === 'Approved')
   const pendingStudents = students.filter(s => s.status === 'Pending')
 
-  // === SAFE FILTER AND SORT LOGIC ===
   const filteredStudents = approvedStudents.filter(s => {
     const matchesSearch = (s.last_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (s.first_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -160,7 +158,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     const matchesSex = filterSex === 'All' || s.sex === filterSex;
     return matchesSearch && matchesSection && matchesSex;
   }).sort((a, b) => {
-    // Safe sorting with fallback to empty string
     const sexA = a.sex || '';
     const sexB = b.sex || '';
     if (sexA !== sexB) return sexA.localeCompare(sexB);
