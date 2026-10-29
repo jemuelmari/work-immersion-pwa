@@ -5,13 +5,17 @@ import Register from './pages/Register'
 import ChangePassword from './pages/ChangePassword'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentDiary from './pages/StudentDiary'
+import StudentRequirements from './pages/StudentRequirements'
 import TeacherDashboard from './pages/TeacherDashboard'
+import TeacherScores from './pages/TeacherScores'
+import TeacherAnnouncements from './pages/TeacherAnnouncements'
+
+type Page = 'dashboard' | 'diary' | 'register' | 'change-password' | 'requirements' | 'scores' | 'announcements'
 
 function AppContent() {
   const { user, loading } = useAuth()
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'diary' | 'register' | 'change-password'>('dashboard')
+  const [currentPage, setCurrentPage] = useState<Page>('dashboard')
 
-  // Automatic redirect kung first time login pa lang
   useEffect(() => {
     if (user && user.role === 'Student' && user.isFirstLogin && currentPage !== 'change-password') {
       setCurrentPage('change-password')
@@ -20,8 +24,12 @@ function AppContent() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
   
+  // Kung wala pang naka-login
   if (!user) {
-    if (currentPage === 'register') return <Register onBack={() => setCurrentPage('dashboard')} />
+    if (currentPage === 'register') {
+      return <Register onBack={() => setCurrentPage('dashboard')} />
+    }
+    // IPINAPASA ANG onGoToRegister
     return <Login onGoToRegister={() => setCurrentPage('register')} />
   }
 
@@ -29,12 +37,25 @@ function AppContent() {
     return <ChangePassword onComplete={() => setCurrentPage('dashboard')} />
   }
 
+  // Student Pages
   if (user.role === 'Student') {
     if (currentPage === 'diary') return <StudentDiary onBack={() => setCurrentPage('dashboard')} />
-    return <StudentDashboard onOpenDiary={() => setCurrentPage('diary')} />
+    if (currentPage === 'requirements') return <StudentRequirements onBack={() => setCurrentPage('dashboard')} />
+    
+    return <StudentDashboard 
+      onOpenDiary={() => setCurrentPage('diary')} 
+      onOpenRequirements={() => setCurrentPage('requirements')}
+    />
   }
 
-  return <TeacherDashboard />
+  // Teacher Pages
+  if (currentPage === 'scores') return <TeacherScores onBack={() => setCurrentPage('dashboard')} />
+  if (currentPage === 'announcements') return <TeacherAnnouncements onBack={() => setCurrentPage('dashboard')} />
+  
+  return <TeacherDashboard 
+    onOpenScores={() => setCurrentPage('scores')} 
+    onOpenAnnouncements={() => setCurrentPage('announcements')}
+  />
 }
 
 function App() {
