@@ -67,9 +67,10 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [loadingRecords, setLoadingRecords] = useState(false)
   
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
+  
+  // States para sa Diary Modal at Grading
   const [selectedDiaryEntry, setSelectedDiaryEntry] = useState<DiaryRecord | null>(null)
-
-  // State para sa Grading
+  const [isViewingDiary, setIsViewingDiary] = useState(false)
   const [isGradingModalOpen, setIsGradingModalOpen] = useState(false)
   const [gradingScores, setGradingScores] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState('')
@@ -206,14 +207,20 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     document.body.removeChild(link)
   }
 
+  // === DIARY VIEW AT GRADING FUNCTIONS ===
+  const openDiaryView = (entry: DiaryRecord) => {
+    setSelectedDiaryEntry(entry)
+    setIsViewingDiary(true)
+  }
+
   const openGradingModal = (entry: DiaryRecord) => {
     setSelectedDiaryEntry(entry)
     setGradingScores({})
     setFeedback(entry.teacher_feedback || '')
+    setIsViewingDiary(false)
     setIsGradingModalOpen(true)
   }
 
-  // === FIX DITO: I-refresh ang diary list pagkatapos mag-save ===
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
     setSavingGrades(true)
@@ -482,7 +489,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                 diary.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang diary entry.</div> : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {diary.map(entry => (
-                      <div key={entry.id} className="bg-white/80 p-5 rounded-2xl shadow-sm border border-white flex flex-col justify-between">
+                      <div key={entry.id} onClick={() => openDiaryView(entry)} className="bg-white/80 p-5 rounded-2xl shadow-sm border border-white flex flex-col justify-between hover:border-blue-300 cursor-pointer transition-all hover:scale-[1.02]">
                         <div>
                           <div className="flex justify-between items-center mb-3">
                             <span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg text-sm">Day {entry.day_number}</span>
@@ -498,7 +505,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                           ) : (
                             <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>
                           )}
-                          <button onClick={() => openGradingModal(entry)} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                          <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
                             {entry.rubric_score ? 'Re-grade' : 'Grade'}
                           </button>
                         </div>
@@ -548,6 +555,30 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               <button onClick={() => setSelectedStudent(null)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Close</button>
               {modalTab === 'attendance' && (
                 <button onClick={handleExportDTR} disabled={attendance.length === 0} className="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold rounded-xl transition-colors flex items-center gap-2 shadow-sm"><Download size={16} /> Export DTR</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FULL DIARY VIEW MODAL */}
+      {isViewingDiary && selectedDiaryEntry && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[75]">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center">
+              <div>
+                <h3 className="font-extrabold text-gray-800 text-lg">Day {selectedDiaryEntry.day_number} Diary</h3>
+                <p className="text-xs text-gray-500 font-medium">{selectedDiaryEntry.date}</p>
+              </div>
+              <button onClick={() => setIsViewingDiary(false)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              <p className="text-gray-700 whitespace-pre-wrap mb-6 leading-relaxed">{selectedDiaryEntry.entry_text}</p>
+              {selectedDiaryEntry.image_urls?.length > 0 && (
+                <div className="space-y-3 mt-4 pt-4 border-t border-white/50">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attached Images</p>
+                  {selectedDiaryEntry.image_urls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-xl border border-white shadow-sm" />)}
+                </div>
               )}
             </div>
           </div>
