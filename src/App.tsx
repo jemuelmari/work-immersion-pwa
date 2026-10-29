@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import TeacherRegister from './pages/TeacherRegister'
+import ForgotPassword from './pages/ForgotPassword' // BAGO
 import ChangePassword from './pages/ChangePassword'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentDiary from './pages/StudentDiary'
@@ -10,7 +12,7 @@ import TeacherDashboard from './pages/TeacherDashboard'
 import TeacherScores from './pages/TeacherScores'
 import TeacherAnnouncements from './pages/TeacherAnnouncements'
 
-type Page = 'dashboard' | 'diary' | 'register' | 'change-password' | 'requirements' | 'scores' | 'announcements'
+type Page = 'dashboard' | 'diary' | 'register' | 'teacher-register' | 'forgot-password' | 'change-password' | 'requirements' | 'scores' | 'announcements'
 
 function AppContent() {
   const { user, loading } = useAuth()
@@ -26,7 +28,14 @@ function AppContent() {
   
   if (!user) {
     if (currentPage === 'register') return <Register onBack={() => setCurrentPage('dashboard')} />
-    return <Login onGoToRegister={() => setCurrentPage('register')} />
+    if (currentPage === 'teacher-register') return <TeacherRegister onBack={() => setCurrentPage('dashboard')} />
+    if (currentPage === 'forgot-password') return <ForgotPassword onBack={() => setCurrentPage('dashboard')} />
+    
+    return <Login 
+      onGoToRegister={() => setCurrentPage('register')} 
+      onGoToTeacherRegister={() => setCurrentPage('teacher-register')} 
+      onGoToForgotPassword={() => setCurrentPage('forgot-password')}
+    />
   }
 
   if (currentPage === 'change-password') return <ChangePassword onComplete={() => setCurrentPage('dashboard')} />
