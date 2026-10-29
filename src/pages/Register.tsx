@@ -2,47 +2,35 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Loader2, ArrowLeft } from 'lucide-react'
 
-// Dito natin nilagay lahat ng Courses at kung anong Field sila nabibilang
 const COURSE_TO_FIELD: Record<string, string> = {
-  // Health
   'Nursing': 'Health',
   'Medical Technology': 'Health',
   'Caregiving': 'Health',
-  
-  // Agriculture
   'BS Agriculture': 'Agriculture',
   'Agribusiness': 'Agriculture',
   'Animal Science': 'Agriculture',
-  
-  // Engineering/IT
   'IT': 'Engineering/IT',
   'Civil Engineering': 'Engineering/IT',
   'Electrical Engineering': 'Engineering/IT',
   'Computer Science': 'Engineering/IT',
   'Geodetic Engineering': 'Engineering/IT',
-  
-  // Business
   'Accountancy': 'Business',
   'Business Admin': 'Business',
   'Entrepreneurship': 'Business',
   'Marketing': 'Business',
-  
-  // Education
   'BEEd': 'Education',
   'BSEd': 'Education',
   'Early Childhood Education': 'Education'
 }
 
-// Listahan ng Deployment Areas base sa Field
 const FIELD_TO_AREAS: Record<string, string[]> = {
   'Health': ['RHU San Jose', 'Lying-In Clinic', 'Hospital'],
   'Agriculture': ['SHEBA', 'Department of Agriculture', 'Farm'],
   'Engineering/IT': ['LGU San Jose', 'Construction Site', 'IT Company'],
   'Business': ['LGU San Jose', 'Papay\'s Bakeshop', 'Bank', 'Office'],
-  'Education': [] // Walang area, School ang lalabas
+  'Education': []
 }
 
-// Listahan ng Schools kung Education ang Field
 const SCHOOLS = [
   'Sta. Cruz Elementary School',
   'Iba Elementary School',
@@ -61,18 +49,16 @@ export default function Register({ onBack }: { onBack: () => void }) {
     lastName: '',
     middleName: '',
     section: '12 GAS',
-    course: 'Nursing', // Default
-    field: 'Health',   // Auto-set
-    deploymentArea: 'RHU San Jose', // Default
-    schoolName: '', // Para sa Education
+    course: 'Nursing',
+    field: 'Health',
+    deploymentArea: 'RHU San Jose',
+    schoolName: '',
     password: ''
   })
 
-  // Kapag nagbago ang Course, awtomatikong magbabago ang Field at Deployment Area
   useEffect(() => {
     const selectedField = COURSE_TO_FIELD[formData.course]
     setFormData(prev => {
-      // Kunin ang unang area sa listahan ng bagong field (kung meron)
       const availableAreas = FIELD_TO_AREAS[selectedField]
       const newArea = availableAreas && availableAreas.length > 0 ? availableAreas[0] : ''
       
@@ -80,7 +66,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
         ...prev,
         field: selectedField,
         deploymentArea: newArea,
-        schoolName: '' // Reset school kung magbabago ng field
+        schoolName: ''
       }
     })
   }, [formData.course])
@@ -92,7 +78,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
     setLoading(true)
 
     try {
-      // 1. Check kung existing na ang LRN
       const { data: existing } = await supabase
         .from('students')
         .select('lrn')
@@ -101,7 +86,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
         
       if (existing) throw new Error('Ang LRN na ito ay rehistrado na. Pakisubukang mag-login.')
 
-      // 2. Gumawa ng Supabase Auth account
       const { error: authError } = await supabase.auth.signUp({
         email: `${formData.lrn}@student.local`,
         password: formData.password,
@@ -109,7 +93,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
 
       if (authError) throw new Error('May error sa paggawa ng account: ' + authError.message)
 
-      // 3. I-save sa students table (Status: Pending)
       const { error: dbError } = await supabase.from('students').insert({
         lrn: formData.lrn,
         first_name: formData.firstName,
@@ -118,9 +101,10 @@ export default function Register({ onBack }: { onBack: () => void }) {
         section: formData.section,
         field: formData.field,
         course: formData.course,
-        deployment_area: formData.deploymentArea || formData.schoolName, // Kung School, yun ang gagamitin
+        deployment_area: formData.deploymentArea || formData.schoolName,
         password_hash: formData.password,
-        status: 'Pending'
+        status: 'Pending',
+        is_first_login: true // IDINAGDAG: Pipilitin silang mag-change password sa first login
       })
 
       if (dbError) throw new Error('May error sa pag-save ng info: ' + dbError.message)
@@ -135,7 +119,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
     }
   }
 
-  // Kunin ang listahan ng courses at areas
   const availableCourses = Object.keys(COURSE_TO_FIELD)
   const availableAreas = FIELD_TO_AREAS[formData.field] || []
   const isEducation = formData.field === 'Education'
@@ -177,7 +160,6 @@ export default function Register({ onBack }: { onBack: () => void }) {
             <input type="text" value={formData.middleName} onChange={e => setFormData({...formData, middleName: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
 
-          {/* SECTION AT COURSE */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
@@ -187,14 +169,13 @@ export default function Register({ onBack }: { onBack: () => void }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Course (Pumili muna)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
               <select value={formData.course} onChange={e => setFormData({...formData, course: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 {availableCourses.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
 
-          {/* FIELD AT DEPLOYMENT AREA / SCHOOL */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Field (Auto-filled)</label>
