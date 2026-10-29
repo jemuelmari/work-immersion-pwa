@@ -134,11 +134,18 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
       }).eq('lrn', editFormData.lrn)
 
       if (error) throw error
-      alert('Student updated successfully!')
+      
+      // AYOS: I-close agad ang modal at i-refresh ang listahan
       setEditingStudent(null)
       setEditFormData(null)
       fetchStudents()
-    } catch (err: any) { alert('Error: ' + err.message) } finally { setIsSavingEdit(false) }
+      alert('✅ Student updated successfully!')
+      
+    } catch (err: any) {
+      alert('❌ Error saving: ' + err.message)
+    } finally {
+      setIsSavingEdit(false)
+    }
   }
 
   const approvedStudents = students.filter(s => s.status === 'Approved')
