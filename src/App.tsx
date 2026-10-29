@@ -3,16 +3,17 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import TeacherRegister from './pages/TeacherRegister'
-import ForgotPassword from './pages/ForgotPassword' // BAGO
+import ForgotPassword from './pages/ForgotPassword'
 import ChangePassword from './pages/ChangePassword'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentDiary from './pages/StudentDiary'
 import StudentRequirements from './pages/StudentRequirements'
+import StudentProfile from './pages/StudentProfile' // BAGO
 import TeacherDashboard from './pages/TeacherDashboard'
 import TeacherScores from './pages/TeacherScores'
 import TeacherAnnouncements from './pages/TeacherAnnouncements'
 
-type Page = 'dashboard' | 'diary' | 'register' | 'teacher-register' | 'forgot-password' | 'change-password' | 'requirements' | 'scores' | 'announcements'
+type Page = 'dashboard' | 'diary' | 'register' | 'teacher-register' | 'forgot-password' | 'change-password' | 'requirements' | 'scores' | 'announcements' | 'profile'
 
 function AppContent() {
   const { user, loading } = useAuth()
@@ -43,7 +44,12 @@ function AppContent() {
   if (user.role === 'Student') {
     if (currentPage === 'diary') return <StudentDiary onBack={() => setCurrentPage('dashboard')} />
     if (currentPage === 'requirements') return <StudentRequirements onBack={() => setCurrentPage('dashboard')} />
-    return <StudentDashboard onOpenDiary={() => setCurrentPage('diary')} onOpenRequirements={() => setCurrentPage('requirements')} />
+    if (currentPage === 'profile') return <StudentProfile onBack={() => setCurrentPage('dashboard')} />
+    return <StudentDashboard 
+      onOpenDiary={() => setCurrentPage('diary')} 
+      onOpenRequirements={() => setCurrentPage('requirements')}
+      onOpenProfile={() => setCurrentPage('profile')}
+    />
   }
 
   if (currentPage === 'scores') return <TeacherScores onBack={() => setCurrentPage('dashboard')} />
