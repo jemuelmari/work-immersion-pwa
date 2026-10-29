@@ -38,7 +38,7 @@ interface DiaryRecord {
   image_urls: string[];
   rubric_score: number;
   teacher_feedback: string;
-  is_locked: boolean; // BAGONG FIELD
+  is_locked: boolean; 
 }
 
 interface RequirementRecord {
@@ -176,7 +176,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     } else { alert("Error sa pag-reset: " + error.message) }
   }
 
-  // === DIARY UNLOCK FUNCTION ===
   const handleUnlockDiary = async (entryId: string) => {
     if (!confirm("Sigurado ka bang gusto mong i-unlock ito? Makakapag-edit na ulit ang estudyante.")) return
     const { error } = await supabase.from('diary').update({ is_locked: false }).eq('id', entryId)
@@ -234,7 +233,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setIsGradingModalOpen(true)
   }
 
-  // === FIX: I-save ang grade AT i-lock ang diary ===
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
     setSavingGrades(true)
@@ -255,19 +253,17 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         }, { onConflict: 'diary_id,criteria' })
       }
 
-      // I-UPDATE ANG DIARY TABLE AT I-SET ANG is_locked = true
       const { error: updateError } = await supabase
         .from('diary')
         .update({
           rubric_score: totalScore,
           teacher_feedback: feedback,
-          is_locked: true // I-LOCK ANG DIARY
+          is_locked: true 
         })
         .eq('id', selectedDiaryEntry.id)
 
       if (updateError) throw updateError
 
-      // I-refresh ang diary list
       if (selectedStudent) {
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
         if (data) setDiary(data)
@@ -528,11 +524,10 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                               <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>
                             )}
                             
-                            {!entry.is_locked && (
-                              <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                                {entry.rubric_score ? 'Re-grade' : 'Grade'}
-                              </button>
-                            )}
+                            {/* LAGING MAY BUTTON PARA MAKA-GRADE */}
+                            <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                              {entry.rubric_score ? 'Re-grade' : 'Grade'}
+                            </button>
                           </div>
                           
                           {entry.is_locked && (
