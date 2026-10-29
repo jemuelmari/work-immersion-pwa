@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock, KeyRound } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock, KeyRound, Edit } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface Student { lrn: string; first_name: string; last_name: string; middle_name: string; section: string; status: string; field: string; course: string; deployment_area: string; sex: string; }
@@ -9,6 +9,10 @@ interface DiaryRecord { id: string; day_number: number; date: string; entry_text
 interface RequirementRecord { id: string; requirement_name: string; file_name: string; file_url: string; uploaded_at: string; }
 interface ResetRequest { id: string; lrn: string; reason: string; status: string; requested_at: string; student_name?: string; }
 
+const normalizeName = (str: string) => {
+  return str.trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())
+}
+
 export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: { onOpenScores: () => void; onOpenAnnouncements: () => void }) {
   const { user, logout } = useAuth()
   const [students, setStudents] = useState<Student[]>([])
@@ -16,9 +20,9 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [searchTerm, setSearchTerm] = useState('')
   const [filterSection, setFilterSection] = useState('All')
   const [filterSex, setFilterSex] = useState('All')
-  const [activeTab, setActiveTab] = useState<'directory' | 'approvals' | 'reset-requests'>('directory') // Bagong tab
+  const [activeTab, setActiveTab] = useState<'directory' | 'approvals' | 'reset-requests'>('directory')
   const [pendingTeachers, setPendingTeachers] = useState<any[]>([])
-  const [resetRequests, setResetRequests] = useState<ResetRequest[]>([]) // Bagong state
+  const [resetRequests, setResetRequests] = useState<ResetRequest[]>([])
   
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [modalTab, setModalTab] = useState<'attendance' | 'diary' | 'requirements'>('attendance')
@@ -36,7 +40,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [feedback, setFeedback] = useState('')
   const [savingGrades, setSavingGrades] = useState(false)
 
-  // State para sa Reset Password Modal
+  // Edit Student State
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null)
+  const [editFormData, setEditFormData] = useState<Student | null>(null)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+
   const [resetRequestToProcess, setResetRequestToProcess] = useState<ResetRequest | null>(null)
   const [newPasswordForStudent, setNewPasswordForStudent] = useState('')
   const [isResetting, setIsResetting] = useState(false)
@@ -56,25 +64,14 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     const { data: teacherData } = await supabase.from('teachers').select('*').eq('status', 'Pending')
     if (teacherData) setPendingTeachers(teacherData)
 
-    // Fetch reset requests
-    const { data: resetData } = await supabase
-      .from('password_reset_requests')
-      .select('*, students(first_name, last_name)')
-      .eq('status', 'Pending')
-      .order('requested_at', { ascending: true })
-    
+    const { data: resetData } = await supabase.from('password_reset_requests').select('*, students(first_name, last_name)').eq('status', 'Pending').order('requested_at', { ascending: true })
     if (resetData) {
       const formattedRequests: ResetRequest[] = resetData.map((r: any) => ({
-        id: r.id,
-        lrn: r.lrn,
-        reason: r.reason,
-        status: r.status,
-        requested_at: r.requested_at,
+        id: r.id, lrn: r.lrn, reason: r.reason, status: r.status, requested_at: r.requested_at,
         student_name: r.students ? `${r.students.last_name}, ${r.students.first_name}` : r.lrn
       }))
       setResetRequests(formattedRequests)
     }
-
     setLoading(false)
   }
 
@@ -106,44 +103,42 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     else alert("Error: " + error.message)
   }
 
-  // === RESET PASSWORD FUNCTION ===
   const handleResetPassword = async () => {
     if (!resetRequestToProcess || !newPasswordForStudent) return
     setIsResetting(true)
-
     try {
-      // 1. I-update ang password sa Auth table (kailangan ng admin access, kaya separate na function ito sa app)
-      // Note: Dahil client-side lang tayo, hindi natin direktang ma-update ang auth.users.
-      // Pero, pwede nating i-update ang password_hash sa students table at i-set ang is_first_login = true.
-      
-      const { error: studentError } = await supabase
-        .from('students')
-        .update({ 
-          password_hash: newPasswordForStudent, 
-          is_first_login: true 
-        })
-        .eq('lrn', resetRequestToProcess.lrn)
-
+      const { error: studentError } = await supabase.from('students').update({ password_hash: newPasswordForStudent, is_first_login: true }).eq('lrn', resetRequestToProcess.lrn)
       if (studentError) throw studentError
-
-      // 2. Mark the request as Approved
-      const { error: requestError } = await supabase
-        .from('password_reset_requests')
-        .update({ status: 'Approved', processed_at: new Date().toISOString() })
-        .eq('id', resetRequestToProcess.id)
-
+      const { error: requestError } = await supabase.from('password_reset_requests').update({ status: 'Approved', processed_at: new Date().toISOString() }).eq('id', resetRequestToProcess.id)
       if (requestError) throw requestError
-
       alert(`✅ Password reset successful!\n\nLRN: ${resetRequestToProcess.lrn}\nBagong Password: ${newPasswordForStudent}\n\nSabihin ito sa estudyante.`)
       setResetRequestToProcess(null)
       setNewPasswordForStudent('')
-      fetchStudents() // Refresh list
+      fetchStudents()
+    } catch (err: any) { alert('Error: ' + err.message) } finally { setIsResetting(false) }
+  }
 
-    } catch (err: any) {
-      alert('Error: ' + err.message)
-    } finally {
-      setIsResetting(false)
-    }
+  const handleSaveEdit = async () => {
+    if (!editFormData) return
+    setIsSavingEdit(true)
+    try {
+      const { error } = await supabase.from('students').update({
+        first_name: normalizeName(editFormData.first_name),
+        last_name: normalizeName(editFormData.last_name),
+        middle_name: normalizeName(editFormData.middle_name),
+        sex: editFormData.sex,
+        section: editFormData.section,
+        field: editFormData.field,
+        course: editFormData.course,
+        deployment_area: editFormData.deployment_area
+      }).eq('lrn', editFormData.lrn)
+
+      if (error) throw error
+      alert('Student updated successfully!')
+      setEditingStudent(null)
+      setEditFormData(null)
+      fetchStudents()
+    } catch (err: any) { alert('Error: ' + err.message) } finally { setIsSavingEdit(false) }
   }
 
   const approvedStudents = students.filter(s => s.status === 'Approved')
@@ -179,26 +174,20 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setSelectedStudent(student)
     setModalTab('attendance')
     setLoadingRecords(true)
-    
     const { data: attData } = await supabase.from('attendance').select('*').eq('lrn', student.lrn).order('date', { ascending: true })
     if (attData) setAttendance(attData)
-
     const { data: diaryData } = await supabase.from('diary').select('*').eq('lrn', student.lrn).order('day_number', { ascending: true })
     if (diaryData) setDiary(diaryData)
-
     const { data: reqData } = await supabase.from('requirements').select('*').eq('lrn', student.lrn).order('uploaded_at', { ascending: false })
     if (reqData) setRequirements(reqData)
-    
     setLoadingRecords(false)
   }
 
   const handleResetAttendance = async (recordId: string) => {
     if (!confirm("Sigurado ka bang gusto mong i-reset ang attendance record na ito?")) return
     const { error } = await supabase.from('attendance').delete().eq('id', recordId)
-    if (!error) {
-      setAttendance(attendance.filter(a => a.id !== recordId))
-      alert("Na-reset na ang attendance record.")
-    } else { alert("Error sa pag-reset: " + error.message) }
+    if (!error) { setAttendance(attendance.filter(a => a.id !== recordId)); alert("Na-reset na.") }
+    else { alert("Error: " + error.message) }
   }
 
   const handleUnlockDiary = async (entryId: string) => {
@@ -209,7 +198,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
         if (data) setDiary(data)
       }
-      alert("Na-unlock na ang diary entry.")
+      alert("Na-unlock na.")
     } else { alert("Error: " + error.message) }
   }
 
@@ -224,7 +213,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     let csvContent = `DAILY TIME RECORD\nName: ${selectedStudent.last_name}, ${selectedStudent.first_name}\nSection: ${selectedStudent.section}\nField: ${selectedStudent.field}\nCourse: ${selectedStudent.course}\nArea: ${selectedStudent.deployment_area}\nLRN: ${selectedStudent.lrn}\n\n`
     csvContent += "Day,Date,Morning In,Morning Out,Afternoon In,Afternoon Out,Total Hours\n"
     let grandTotal = 0;
-
     attendance.forEach((rec, index) => {
       const dayNum = index + 1;
       const totalHrs = parseFloat(rec.total_hours?.toString() || '0')
@@ -232,7 +220,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
       csvContent += `${dayNum},${rec.date},${rec.morning_in || '-'},${rec.morning_out || '-'},${rec.afternoon_in || '-'},${rec.afternoon_out || '-'},${totalHrs.toFixed(2)}\n`;
     })
     csvContent += `\n\nTOTAL HOURS:,${grandTotal.toFixed(2)}\n`
-
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement("a")
     link.setAttribute("href", URL.createObjectURL(blob))
@@ -243,18 +230,8 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     document.body.removeChild(link)
   }
 
-  const openDiaryView = (entry: DiaryRecord) => {
-    setSelectedDiaryEntry(entry)
-    setIsViewingDiary(true)
-  }
-
-  const openGradingModal = (entry: DiaryRecord) => {
-    setSelectedDiaryEntry(entry)
-    setGradingScores({})
-    setFeedback(entry.teacher_feedback || '')
-    setIsViewingDiary(false)
-    setIsGradingModalOpen(true)
-  }
+  const openDiaryView = (entry: DiaryRecord) => { setSelectedDiaryEntry(entry); setIsViewingDiary(true) }
+  const openGradingModal = (entry: DiaryRecord) => { setSelectedDiaryEntry(entry); setGradingScores({}); setFeedback(entry.teacher_feedback || ''); setIsViewingDiary(false); setIsGradingModalOpen(true) }
 
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
@@ -262,25 +239,19 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     try {
       let totalScore = 0
       RUBRIC_CATEGORIES.forEach(cat => { totalScore += parseFloat(gradingScores[cat.id] || '0') })
-
       for (const cat of RUBRIC_CATEGORIES) {
         const scoreValue = parseFloat(gradingScores[cat.id] || '0')
         await supabase.from('diary_scores').upsert({ diary_id: selectedDiaryEntry.id, criteria: cat.name, score: scoreValue }, { onConflict: 'diary_id,criteria' })
       }
-
       const { error: updateError } = await supabase.from('diary').update({ rubric_score: totalScore, teacher_feedback: feedback, is_locked: true }).eq('id', selectedDiaryEntry.id)
       if (updateError) throw updateError
-
       if (selectedStudent) {
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
         if (data) setDiary(data)
       }
-
       setIsGradingModalOpen(false)
-      alert('Grades saved successfully! Naka-lock na ang diary.')
-    } catch (err: any) {
-      alert('Error saving grades: ' + err.message)
-    } finally { setSavingGrades(false) }
+      alert('Grades saved!')
+    } catch (err: any) { alert('Error: ' + err.message) } finally { setSavingGrades(false) }
   }
 
   return (
@@ -298,8 +269,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
       </div>
 
       <div className="max-w-5xl mx-auto p-4 space-y-6 mt-2">
-        
-        {/* TABS NAVIGATION */}
         <div className="flex flex-wrap gap-2 p-1.5 bg-white/40 backdrop-blur-md rounded-2xl border border-white/50 w-fit">
           <button onClick={() => setActiveTab('directory')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'directory' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><Users size={16} /> Directory</button>
           <button onClick={() => setActiveTab('approvals')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'approvals' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><UserPlus size={16} /> Approvals {pendingStudents.length + pendingTeachers.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length + pendingTeachers.length}</span>}</button>
@@ -336,7 +305,10 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                       {filteredStudents.map(student => (
                         <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
                           <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}</td><td className="px-5 py-4 text-gray-800">{student.first_name}</td><td className="px-5 py-4 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td><td className="px-5 py-4 text-gray-600">{student.sex}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.course}</td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.deployment_area}</td>
-                          <td className="px-5 py-4 text-right"><button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-bold text-sm bg-blue-50/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">View Record</button></td>
+                          <td className="px-5 py-4 text-right flex justify-end gap-2">
+                            <button onClick={() => { setEditingStudent(student); setEditFormData({...student}); }} className="text-orange-600 hover:text-orange-800 font-bold text-sm bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg transition-colors"><Edit size={14} /></button>
+                            <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-bold text-sm bg-blue-50/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">View Record</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -391,7 +363,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
           </div>
         )}
 
-        {/* RESET REQUESTS TAB */}
         {activeTab === 'reset-requests' && (
           <div className="glass-card rounded-3xl overflow-hidden">
             <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Password Reset Requests</h2></div>
@@ -401,14 +372,9 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                 <tbody className="divide-y divide-white/40">
                   {resetRequests.map(req => (
                     <tr key={req.id} className="hover:bg-white/40 transition-colors">
-                      <td className="px-5 py-4 font-mono text-gray-700">{req.lrn}</td>
-                      <td className="px-5 py-4 font-bold text-gray-800">{req.student_name}</td>
-                      <td className="px-5 py-4 text-gray-600 text-xs">{req.reason || 'Walang dahilan'}</td>
-                      <td className="px-5 py-4 text-gray-600 text-xs">{new Date(req.requested_at).toLocaleString()}</td>
+                      <td className="px-5 py-4 font-mono text-gray-700">{req.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{req.student_name}</td><td className="px-5 py-4 text-gray-600 text-xs">{req.reason || 'Walang dahilan'}</td><td className="px-5 py-4 text-gray-600 text-xs">{new Date(req.requested_at).toLocaleString()}</td>
                       <td className="px-5 py-4 text-right">
-                        <button onClick={() => setResetRequestToProcess(req)} className="text-white bg-orange-500 hover:bg-orange-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors ml-auto">
-                          <KeyRound size={16} /> Reset Password
-                        </button>
+                        <button onClick={() => setResetRequestToProcess(req)} className="text-white bg-orange-500 hover:bg-orange-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors ml-auto"><KeyRound size={16} /> Reset Password</button>
                       </td>
                     </tr>
                   ))}
@@ -424,31 +390,188 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="glass-card rounded-3xl shadow-2xl w-full max-w-md p-6">
             <h3 className="font-extrabold text-gray-800 text-lg mb-4">Reset Password</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Mag-set ng bagong password para kay <span className="font-bold">{resetRequestToProcess.student_name}</span> ({resetRequestToProcess.lrn}).
-            </p>
-            
+            <p className="text-sm text-gray-600 mb-4">Mag-set ng bagong password para kay <span className="font-bold">{resetRequestToProcess.student_name}</span> ({resetRequestToProcess.lrn}).</p>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Bagong Password</label>
-                <input 
-                  type="text" 
-                  value={newPasswordForStudent} 
-                  onChange={(e) => setNewPasswordForStudent(e.target.value)}
-                  className="glass-input w-full px-4 py-2.5 rounded-xl outline-none font-mono"
-                  placeholder="Hal. Juan123!"
-                />
-                <p className="text-xs text-gray-500 mt-1">I-note ito at sabihin sa estudyante.</p>
+                <input type="text" value={newPasswordForStudent} onChange={(e) => setNewPasswordForStudent(e.target.value)} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none font-mono" placeholder="Hal. Juan123!" />
               </div>
-
               <div className="flex justify-end gap-3 mt-6">
                 <button onClick={() => setResetRequestToProcess(null)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Cancel</button>
-                <button onClick={handleResetPassword} disabled={isResetting || !newPasswordForStudent} className="glass-button-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold disabled:opacity-50">
-                  {isResetting ? 'Nagre-reset...' : 'I-save ang Bagong Password'}
-                </button>
+                <button onClick={handleResetPassword} disabled={isResetting || !newPasswordForStudent} className="glass-button-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold disabled:opacity-50">{isResetting ? 'Nagre-reset...' : 'I-save ang Bagong Password'}</button>
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* EDIT STUDENT MODAL */}
+      {editingStudent && editFormData && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6">
+            <h3 className="font-extrabold text-gray-800 text-lg mb-4">Edit Student Info</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">First Name</label>
+                <input type="text" value={editFormData.first_name} onChange={(e) => setEditFormData({...editFormData, first_name: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Last Name</label>
+                <input type="text" value={editFormData.last_name} onChange={(e) => setEditFormData({...editFormData, last_name: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Middle Name</label>
+                <input type="text" value={editFormData.middle_name || ''} onChange={(e) => setEditFormData({...editFormData, middle_name: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Sex</label>
+                <select value={editFormData.sex} onChange={(e) => setEditFormData({...editFormData, sex: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none">
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Section</label>
+                <select value={editFormData.section} onChange={(e) => setEditFormData({...editFormData, section: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none">
+                  <option value="12 GAS">12 GAS</option>
+                  <option value="12 HUMSS">12 HUMSS</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button onClick={() => setEditingStudent(null)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Cancel</button>
+                <button onClick={handleSaveEdit} disabled={isSavingEdit} className="glass-button-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold disabled:opacity-50">{isSavingEdit ? 'Saving...' : 'Save Changes'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STUDENT VIEW MODAL */}
+      {selectedStudent && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-white/50 bg-white/40 flex justify-between items-start">
+              <div>
+                <h3 className="text-xl font-extrabold text-gray-800">Student Records</h3>
+                <p className="text-sm text-gray-600 font-medium mt-1">{selectedStudent.last_name}, {selectedStudent.first_name} ({selectedStudent.lrn})</p>
+                <p className="text-xs text-blue-600 font-bold mt-1 bg-blue-50 px-2 py-1 rounded w-fit">{selectedStudent.field} | {selectedStudent.course} | {selectedStudent.deployment_area}</p>
+              </div>
+              <button onClick={() => setSelectedStudent(null)} className="text-gray-400 hover:text-gray-600 p-2 bg-white/50 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+
+            <div className="flex border-b border-white/50 px-6 bg-white/20">
+              <button onClick={() => setModalTab('attendance')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'attendance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><CalendarCheck size={18} /> Attendance (DTR)</button>
+              <button onClick={() => setModalTab('diary')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'diary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><BookOpen size={18} /> Daily Diary</button>
+              <button onClick={() => setModalTab('requirements')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'requirements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><FileText size={18} /> Requirements</button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {loadingRecords ? <div className="text-center py-10 text-gray-500 font-medium">Loading records...</div> : modalTab === 'attendance' ? (
+                attendance.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang attendance record.</div> : (
+                  <>
+                    <div className="mb-6 bg-gradient-to-r from-blue-500 to-indigo-500 p-5 rounded-2xl flex justify-between items-center shadow-lg shadow-blue-200">
+                      <span className="font-bold text-white/90">Total Rendered Hours:</span>
+                      <span className="text-3xl font-extrabold text-white">{calculateTotalHours()} <span className="text-lg">hrs</span></span>
+                    </div>
+                    <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden">
+                      <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-white/80 border-b border-gray-100 text-gray-600">
+                          <tr><th className="px-4 py-3 font-bold">Date</th><th className="px-4 py-3 font-bold text-center">Morning In/Out</th><th className="px-4 py-3 font-bold text-center">Afternoon In/Out</th><th className="px-4 py-3 font-bold">Photos</th><th className="px-4 py-3 font-bold text-right">Total</th><th className="px-4 py-3 font-bold text-right">Actions</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {attendance.map(rec => (
+                            <tr key={rec.id} className="hover:bg-white transition-colors">
+                              <td className="px-4 py-3 text-gray-800 font-medium">{rec.date}</td>
+                              <td className="px-4 py-3 text-gray-600 font-mono text-xs text-center">{rec.morning_in ? rec.morning_in : '-'} / {rec.morning_out ? rec.morning_out : '-'}</td>
+                              <td className="px-4 py-3 text-gray-600 font-mono text-xs text-center">{rec.afternoon_in ? rec.afternoon_in : '-'} / {rec.afternoon_out ? rec.afternoon_out : '-'}</td>
+                              <td className="px-4 py-3 flex gap-2">
+                                {rec.time_in_photo && <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold hover:bg-blue-200 transition-colors">In</button>}
+                                {rec.time_out_photo && <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-bold hover:bg-orange-200 transition-colors">Out</button>}
+                              </td>
+                              <td className="px-4 py-3 text-blue-600 font-extrabold text-right">{rec.total_hours || 0} hrs</td>
+                              <td className="px-4 py-3 text-right"><button onClick={() => handleResetAttendance(rec.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded-lg transition-colors"><RotateCcw size={16} /></button></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )
+              ) : modalTab === 'diary' ? (
+                diary.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang diary entry.</div> : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {diary.map(entry => (
+                      <div key={entry.id} onClick={() => openDiaryView(entry)} className={`bg-white/80 p-5 rounded-2xl shadow-sm border flex flex-col justify-between transition-all ${entry.is_locked ? 'border-green-300 bg-green-50/30' : 'border-white hover:border-blue-300 cursor-pointer hover:scale-[1.02]'}`}>
+                        <div>
+                          <div className="flex justify-between items-center mb-3"><span className="font-extrabold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg text-sm">Day {entry.day_number}</span><span className="text-xs text-gray-500 font-medium">{entry.date}</span></div>
+                          <p className="text-sm text-gray-700 line-clamp-3 leading-relaxed">{entry.entry_text}</p>
+                          {entry.image_urls?.length > 0 && <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 font-medium"><ImageIcon size={14} /> {entry.image_urls.length} image(s) attached</div>}
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            {entry.rubric_score ? <span className="font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded text-sm flex items-center gap-1"><Star size={14} /> Score: {entry.rubric_score}/100</span> : <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>}
+                            <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">{entry.rubric_score ? 'Re-grade' : 'Grade'}</button>
+                          </div>
+                          {entry.is_locked && <button onClick={(e) => { e.stopPropagation(); handleUnlockDiary(entry.id); }} className="text-xs bg-orange-50 text-orange-600 font-bold px-3 py-1.5 rounded-lg hover:bg-orange-100 transition-colors w-full flex items-center justify-center gap-1"><Unlock size={12} /> Unlock for Re-upload</button>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                requirements.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang na-upload na requirements.</div> : (
+                  <>
+                    <div className="mb-4 flex justify-end">
+                      <button onClick={() => { requirements.forEach(req => { const safeName = req.requirement_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Document'; const fileName = `${selectedStudent.lrn}_${selectedStudent.last_name}_${selectedStudent.first_name}_${safeName}.pdf`; const link = document.createElement('a'); link.href = req.file_url; link.download = fileName; link.target = '_blank'; link.click() }) }} className="text-sm bg-green-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-green-600 flex items-center gap-2 shadow-lg shadow-green-200 transition-colors"><Download size={16} /> Download All Files</button>
+                    </div>
+                    <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden divide-y divide-gray-100">
+                      {requirements.map(req => (
+                        <div key={req.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors">
+                          <div className="flex items-center gap-3"><div className="bg-blue-100 p-2 rounded-lg text-blue-600"><FileText size={20} /></div><div><p className="font-bold text-sm text-gray-800">{req.requirement_name}</p><p className="text-xs text-gray-500 font-medium">{req.file_name} • {new Date(req.uploaded_at).toLocaleDateString()}</p></div></div>
+                          <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">View</a>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )
+              )}
+            </div>
+
+            <div className="p-4 border-t border-white/50 bg-white/40 flex justify-end gap-3">
+              <button onClick={() => setSelectedStudent(null)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Close</button>
+              {modalTab === 'attendance' && <button onClick={handleExportDTR} disabled={attendance.length === 0} className="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold rounded-xl transition-colors flex items-center gap-2 shadow-sm"><Download size={16} /> Export DTR</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isViewingDiary && selectedDiaryEntry && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[75]">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center"><div><h3 className="font-extrabold text-gray-800 text-lg">Day {selectedDiaryEntry.day_number} Diary</h3><p className="text-xs text-gray-500 font-medium">{selectedDiaryEntry.date}</p></div><button onClick={() => setIsViewingDiary(false)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button></div>
+            <div className="p-6 overflow-y-auto"><p className="text-gray-700 whitespace-pre-wrap mb-6 leading-relaxed">{selectedDiaryEntry.entry_text}</p>{selectedDiaryEntry.image_urls?.length > 0 && (<div className="space-y-3 mt-4 pt-4 border-t border-white/50"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attached Images</p>{selectedDiaryEntry.image_urls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-xl border border-white shadow-sm" />)}</div>)}</div>
+          </div>
+        </div>
+      )}
+
+      {isGradingModalOpen && selectedDiaryEntry && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center"><div><h3 className="font-extrabold text-gray-800 text-lg">Grade Diary Entry</h3><p className="text-xs text-gray-500 font-medium">Day {selectedDiaryEntry.day_number} - {selectedDiaryEntry.date}</p></div><button onClick={() => setIsGradingModalOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button></div>
+            <div className="p-6 overflow-y-auto space-y-4 bg-gray-50/50">
+              {RUBRIC_CATEGORIES.map(cat => (
+                <div key={cat.id} className="bg-white/80 p-4 rounded-xl border border-white"><div className="flex justify-between items-center mb-1"><label className="text-sm font-bold text-gray-700">{cat.name}</label><span className="text-xs font-medium text-gray-500">Max: {cat.max}</span></div><p className="text-xs text-gray-500 mb-2 italic">{cat.description}</p><input type="number" min="0" max={cat.max} value={gradingScores[cat.id] || ''} onChange={(e) => setGradingScores({...gradingScores, [cat.id]: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-lg font-bold text-blue-600" placeholder="0" /></div>
+              ))}
+              <div className="bg-white/80 p-4 rounded-xl border border-white"><label className="block text-sm font-bold text-gray-700 mb-2">Teacher's Feedback</label><textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none h-24" placeholder="Isulat ang feedback..."></textarea></div>
+            </div>
+            <div className="p-4 border-t border-white/50 bg-white/40 flex justify-end gap-3"><button onClick={() => setIsGradingModalOpen(false)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Cancel</button><button onClick={handleSaveGrades} disabled={savingGrades} className="glass-button-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold disabled:opacity-50">{savingGrades ? 'Nag-sa-save...' : 'Save Grades'}</button></div>
+          </div>
+        </div>
+      )}
+
+      {selectedPhoto && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedPhoto(null)}>
+          <img src={selectedPhoto} alt="Attendance" className="max-w-full max-h-[90vh] rounded-2xl object-contain shadow-2xl" />
         </div>
       )}
     </div>
