@@ -32,7 +32,7 @@ interface DiaryRecord {
   image_urls: string[];
 }
 
-export default function TeacherDashboard() {
+export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: { onOpenScores: () => void; onOpenAnnouncements: () => void }) {
   const { user, logout } = useAuth()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
@@ -193,7 +193,7 @@ export default function TeacherDashboard() {
       <div className="max-w-5xl mx-auto p-4 space-y-4">
         
         {/* TABS */}
-        <div className="flex gap-2 border-b border-gray-300">
+        <div className="flex flex-wrap gap-2 border-b border-gray-300">
           <button 
             onClick={() => setActiveTab('directory')}
             className={`px-4 py-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'directory' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
@@ -206,6 +206,14 @@ export default function TeacherDashboard() {
           >
             <UserPlus size={16} /> Approvals 
             {pendingStudents.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length}</span>}
+          </button>
+
+          {/* BAGONG BUTTONS */}
+          <button onClick={onOpenScores} className="px-4 py-2 font-medium text-sm flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors ml-auto border-b-2 border-transparent">
+            <CalendarCheck size={16} /> Manage Scores
+          </button>
+          <button onClick={onOpenAnnouncements} className="px-4 py-2 font-medium text-sm flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors border-b-2 border-transparent">
+            <BookOpen size={16} /> Announcements
           </button>
         </div>
 
