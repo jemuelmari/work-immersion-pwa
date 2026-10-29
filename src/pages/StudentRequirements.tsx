@@ -4,12 +4,15 @@ import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/db'
 import { Upload, FileText, ArrowLeft, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
 
+// BAGONG LISTAHAN NG REQUIREMENTS BASE SA BINIGAY MO
 const REQUIRED_DOCS = [
-  "Parent's Consent",
-  "Medical Certificate",
+  "Parental Consent",
+  "Application Letter and Resume",
   "Barangay Clearance",
-  "Certificate of Enrollment",
-  "ID Picture (2x2)"
+  "Medical Certificate",
+  "Mayor's Clearance",
+  "Certificate of Indigence",
+  "Birth Certificate"
 ]
 
 export default function StudentRequirements({ onBack }: { onBack: () => void }) {
@@ -98,18 +101,15 @@ export default function StudentRequirements({ onBack }: { onBack: () => void }) 
     } catch (err: any) { alert('Upload Error: ' + err.message) }
   }
 
-  // --- DOWNLOAD ALL FUNCTION (FORMAT: LRN_LastName_FirstName_RequirementName) ---
   const handleDownloadAll = () => {
     const uploadedReqs = requirements.filter(r => r.status === 'Uploaded')
     if (uploadedReqs.length === 0) return
 
     uploadedReqs.forEach((req) => {
       const safeName = req.name.replace(/[^a-zA-Z0-9]/g, '_')
-      // Kukunin natin ang user.name na naka-format na "Firstname Lastname"
       const nameParts = user?.name.split(' ') || ['Student', 'Name']
       const firstName = nameParts[0]
       const lastName = nameParts.slice(1).join('_')
-      
       const fileName = `${user?.id}_${lastName}_${firstName}_${safeName}.pdf`
       
       const link = document.createElement('a')
@@ -139,25 +139,10 @@ export default function StudentRequirements({ onBack }: { onBack: () => void }) 
           </div>
         )}
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center mb-2">
-            <h2 className="font-bold text-gray-800">Upload Progress</h2>
-            <span className={`font-bold ${progressPercent === 100 ? 'text-green-600' : 'text-blue-600'}`}>{progressPercent}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
-            <div className={`h-3 rounded-full transition-all duration-500 ${progressPercent === 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${progressPercent}%` }}></div>
-          </div>
-          
-          {uploadedCount > 0 && (
-            <button onClick={handleDownloadAll} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 transition-colors">
-              <Download size={20} /> Download All Files ({uploadedCount})
-            </button>
-          )}
-        </div>
-
+        {/* CHECKLIST */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="p-4 bg-gray-50 border-b border-gray-100">
-            <h2 className="font-bold text-sm text-gray-700">Checklist ({uploadedCount}/{REQUIRED_DOCS.length})</h2>
+            <h2 className="font-bold text-sm text-gray-700">Checklist ng mga Requirements</h2>
           </div>
           
           {loading ? (
@@ -189,6 +174,27 @@ export default function StudentRequirements({ onBack }: { onBack: () => void }) 
             </div>
           )}
         </div>
+
+        {/* PROGRESS BAR SA PINAKABABA */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="font-bold text-gray-800">Upload Progress</h2>
+            <span className={`font-bold ${progressPercent === 100 ? 'text-green-600' : 'text-blue-600'}`}>{progressPercent}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
+            <div className={`h-3 rounded-full transition-all duration-500 ${progressPercent === 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${progressPercent}%` }}></div>
+          </div>
+          <p className="text-xs text-gray-500 text-center mb-4">
+            {uploadedCount} sa {REQUIRED_DOCS.length} requirements ang na-upload.
+          </p>
+          
+          {uploadedCount > 0 && (
+            <button onClick={handleDownloadAll} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 transition-colors">
+              <Download size={20} /> Download All Files ({uploadedCount})
+            </button>
+          )}
+        </div>
+
       </div>
     </div>
   )
