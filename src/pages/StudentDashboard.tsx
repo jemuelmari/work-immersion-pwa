@@ -12,7 +12,6 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
   const [isSyncing, setIsSyncing] = useState(false)
   const [announcement, setAnnouncement] = useState<{title: string, body: string} | null>(null)
   
-  // Attendance States
   const [todayRecord, setTodayRecord] = useState<any>(null)
   const [cameraMode, setCameraMode] = useState<'MORNING_IN' | 'MORNING_OUT' | 'AFTERNOON_IN' | 'AFTERNOON_OUT'>('MORNING_IN')
 
@@ -39,7 +38,8 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
     setPendingSyncs(count)
     
     if (isOnline && user?.id) {
-      const today = new Date().toLocaleDateString('en-CA') 
+      const now = new Date()
+      const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
       const { data } = await supabase.from('attendance').select('*').eq('lrn', user.id).eq('date', today).single()
       if (data) setTodayRecord(data)
       
@@ -71,7 +71,6 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
       let isSuccess = false;
       try {
         if (item.action.startsWith('MORNING') || item.action.startsWith('AFTERNOON')) {
-          // Dito natin i-upsert ang buong record para hindi magulo
           const { error } = await supabase.from('attendance').upsert(item.payload, { onConflict: 'lrn,date' })
           if (error) throw error
           isSuccess = true;
@@ -110,20 +109,18 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
     const photoUrl = await uploadPhoto(photoBase64, cameraMode)
     
     const now = new Date()
-    const today = now.toLocaleDateString('en-CA') 
-    const timeStr = now.toLocaleTimeString('en-GB', { hour12: false })
+    const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+    const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0')
 
-    // I-prepare ang payload para sa upsert (para isang record lang per day)
     let payload: any = {
       lrn: user?.id,
       date: today,
-      time_in_photo: todayRecord?.time_in_photo || null, // Default sa lumang photo kung meron
+      time_in_photo: todayRecord?.time_in_photo || null,
       time_out_photo: todayRecord?.time_out_photo || null
     }
 
     if (todayRecord) payload = { ...todayRecord, ...payload }
 
-    // I-set ang tamang field base sa mode
     if (cameraMode === 'MORNING_IN') {
       payload.morning_in = timeStr
       payload.time_in_photo = photoUrl
@@ -142,11 +139,10 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
       status: 'pending', createdAt: now.toISOString()
     })
     
-    setTodayRecord(payload) // I-update ang UI agad
+    setTodayRecord(payload)
     fetchTodayRecord()
   }
 
-  // Helper para malaman kung anong button ang lalabas
   const getButtonState = () => {
     if (!todayRecord) return 'MORNING_IN'
     if (!todayRecord.morning_in) return 'MORNING_IN'
