@@ -44,16 +44,12 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
         setHasTimedIn(true)
         if (data.time_out) setHasTimedOut(true)
       }
-
-      // Fetch latest announcement
       const { data: annData } = await supabase.from('announcements').select('*').order('created_at', {ascending: false}).limit(1)
       if (annData && annData.length > 0) setAnnouncement(annData[0])
     }
   }
 
-  useEffect(() => {
-    checkStatus()
-  }, [isOnline, hasTimedIn, hasTimedOut])
+  useEffect(() => { checkStatus() }, [isOnline, hasTimedIn, hasTimedOut])
 
   const uploadPhoto = async (base64Data: string, action: string) => {
     if (!isOnline) return base64Data
@@ -64,10 +60,7 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
       if (error) throw error
       const { data: urlData } = supabase.storage.from('attendance_photos').getPublicUrl(fileName)
       return urlData.publicUrl
-    } catch (err) {
-      console.error("Upload error:", err)
-      return base64Data
-    }
+    } catch (err) { console.error("Upload error:", err); return base64Data }
   }
 
   const syncData = async () => {
@@ -75,21 +68,15 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
     const pendingItems = await db.syncQueue.where('status').equals('pending').toArray()
     if (pendingItems.length === 0) return
     setIsSyncing(true)
-
     for (const item of pendingItems) {
       let isSuccess = false;
       try {
         if (item.action === 'TIME_IN') {
-          const { error } = await supabase.from('attendance').insert({
-            lrn: item.payload.lrn, date: item.payload.date, time_in: item.payload.time, time_in_photo: item.payload.photo_url
-          })
+          const { error } = await supabase.from('attendance').insert({ lrn: item.payload.lrn, date: item.payload.date, time_in: item.payload.time, time_in_photo: item.payload.photo_url })
           if (error && error.code !== '23505') throw error
           isSuccess = true;
-        } 
-        else if (item.action === 'TIME_OUT') {
-          const { error } = await supabase.from('attendance').update({
-            time_out: item.payload.time, time_out_photo: item.payload.photo_url
-          }).eq('lrn', item.payload.lrn).eq('date', item.payload.date)
+        } else if (item.action === 'TIME_OUT') {
+          const { error } = await supabase.from('attendance').update({ time_out: item.payload.time, time_out_photo: item.payload.photo_url }).eq('lrn', item.payload.lrn).eq('date', item.payload.date)
           if (error) throw error
           isSuccess = true;
         }
@@ -124,18 +111,15 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
     canvas.getContext('2d')?.drawImage(video, 0, 0)
     const photoBase64 = canvas.toDataURL('image/jpeg', 0.4)
     stopCamera()
-
     const photoUrl = await uploadPhoto(photoBase64, cameraMode)
     const now = new Date()
     const today = now.toLocaleDateString('en-CA') 
     const timeStr = now.toLocaleTimeString('en-GB', { hour12: false })
-
     await db.syncQueue.add({
       action: cameraMode,
       payload: { lrn: user?.id, date: today, time: timeStr, photo_url: photoUrl },
       status: 'pending', createdAt: now.toISOString()
     })
-
     if (cameraMode === 'TIME_IN') setHasTimedIn(true)
     else setHasTimedOut(true)
     checkStatus()
@@ -162,12 +146,8 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
           </div>
         )}
 
-        {!isOnline && (
-          <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm text-center border border-red-100">Offline ka ngayon. Ang data ay awtomatikong ipapadala kapag may net na.</div>
-        )}
-        {isSyncing && (
-          <div className="bg-blue-50 text-blue-700 p-3 rounded-xl text-sm flex items-center justify-center gap-2 border border-blue-100"><RefreshCw className="animate-spin" size={16} /> Nag-sa-sync ng data...</div>
-        )}
+        {!isOnline && <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm text-center border border-red-100">Offline ka ngayon.</div>}
+        {isSyncing && <div className="bg-blue-50 text-blue-700 p-3 rounded-xl text-sm flex items-center justify-center gap-2 border border-blue-100"><RefreshCw className="animate-spin" size={16} /> Nag-sa-sync...</div>}
 
         <div className="bg-white p-6 rounded-2xl shadow-sm text-center border border-gray-100">
           <div className="text-4xl font-bold text-gray-800 tracking-tight mb-1">{time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
@@ -181,7 +161,7 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
               </div>
               <div className="flex gap-2">
                 <button onClick={stopCamera} className="flex-1 py-3 rounded-xl bg-gray-200 text-gray-700 font-bold">Cancel</button>
-                <button onClick={captureImage} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200">Capture</button>
+                <button onClick={captureImage} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold">Capture</button>
               </div>
             </div>
           ) : (
@@ -202,13 +182,15 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
         <button onClick={onOpenDiary} className="w-full bg-white border border-gray-200 text-gray-700 font-bold py-4 rounded-xl shadow-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
           <BookOpen size={20} className="text-blue-600" /> My Daily Diary
         </button>
+
+        {/* BAGONG BUTTON PARA SA REQUIREMENTS */}
         <button onClick={onOpenRequirements} className="w-full bg-white border border-gray-200 text-gray-700 font-bold py-4 rounded-xl shadow-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
           <FileText size={20} className="text-blue-600" /> My Requirements
         </button>
 
         {pendingSyncs > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-center justify-between text-yellow-800 text-sm">
-            <div className="flex items-center gap-3"><Clock size={20} className="shrink-0" /><p>May <strong>{pendingSyncs}</strong> kang hindi pa naka-sync.</p></div>
+            <div className="flex items-center gap-3"><Clock size={20} className="shrink-0" /><p>May <strong>{pendingSyncs}</strong> kang pending.</p></div>
             <button onClick={syncData} disabled={!isOnline || isSyncing} className="bg-yellow-200 hover:bg-yellow-300 text-yellow-900 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors disabled:opacity-50">Sync Now</button>
           </div>
         )}
