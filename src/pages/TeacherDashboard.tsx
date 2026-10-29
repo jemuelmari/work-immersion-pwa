@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface Student {
@@ -21,6 +21,10 @@ interface AttendanceRecord {
   date: string;
   time_in: string;
   time_out: string;
+  morning_in: string;
+  morning_out: string;
+  afternoon_in: string;
+  afternoon_out: string;
   total_hours: number;
   time_in_photo: string;
   time_out_photo: string;
@@ -50,6 +54,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [filterSection, setFilterSection] = useState('All')
   const [filterSex, setFilterSex] = useState('All')
   const [activeTab, setActiveTab] = useState<'directory' | 'approvals'>('directory')
+  const [pendingTeachers, setPendingTeachers] = useState<any[]>([])
   
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [modalTab, setModalTab] = useState<'attendance' | 'diary' | 'requirements'>('attendance')
@@ -66,6 +71,10 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setLoading(true)
     const { data, error } = await supabase.from('students').select('*').order('last_name', { ascending: true })
     if (!error && data) setStudents(data)
+
+    const { data: teacherData } = await supabase.from('teachers').select('*').eq('status', 'Pending')
+    if (teacherData) setPendingTeachers(teacherData)
+
     setLoading(false)
   }
 
@@ -82,6 +91,19 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     const { error } = await supabase.from('students').update({ status: 'Rejected' }).eq('lrn', lrn)
     if (!error) fetchStudents()
     else alert("Error sa pag-reject: " + error.message)
+  }
+
+  const handleApproveTeacher = async (email: string) => {
+    const { error } = await supabase.from('teachers').update({ status: 'Approved' }).eq('email', email)
+    if (!error) fetchStudents()
+    else alert("Error: " + error.message)
+  }
+
+  const handleRejectTeacher = async (email: string) => {
+    if (!confirm("I-reject ang teacher na ito?")) return
+    const { error } = await supabase.from('teachers').update({ status: 'Rejected' }).eq('email', email)
+    if (!error) fetchStudents()
+    else alert("Error: " + error.message)
   }
 
   const approvedStudents = students.filter(s => s.status === 'Approved')
@@ -130,60 +152,37 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setLoadingRecords(false)
   }
 
-  const computeHours = (timeIn: string, timeOut: string) => {
-    if (!timeIn || !timeOut) return 0;
-    try {
-      const t1 = timeIn.split(':').map(Number);
-      const t2 = timeOut.split(':').map(Number);
-      let seconds1 = (t1[0] * 3600) + (t1[1] * 60) + (t1[2] || 0);
-      let seconds2 = (t2[0] * 3600) + (t2[1] * 60) + (t2[2] || 0);
-      let diff = seconds2 - seconds1;
-      if (diff < 0) diff += 24 * 3600;
-      return (diff / 3600).toFixed(2);
-    } catch (e) { return "0.00"; }
+  // --- RESET ATTENDANCE FUNCTION ---
+  const handleResetAttendance = async (recordId: string) => {
+    if (!confirm("Sigurado ka bang gusto mong i-reset ang attendance record na ito? Mabubura lahat ng oras (AM/PM).")) return
+    
+    const { error } = await supabase.from('attendance').delete().eq('id', recordId)
+    if (!error) {
+      // I-update ang local state para mawala agad
+      setAttendance(attendance.filter(a => a.id !== recordId))
+      alert("Na-reset na ang attendance record.")
+    } else {
+      alert("Error sa pag-reset: " + error.message)
+    }
   }
 
   const calculateTotalHours = () => {
     let total = 0
-    attendance.forEach(rec => { total += parseFloat(computeHours(rec.time_in, rec.time_out)) })
+    attendance.forEach(rec => { total += parseFloat(rec.total_hours?.toString() || '0') })
     return total.toFixed(2)
   }
 
   const handleExportDTR = () => {
     if (!selectedStudent || attendance.length === 0) return
     let csvContent = `DAILY TIME RECORD\nName: ${selectedStudent.last_name}, ${selectedStudent.first_name}\nSection: ${selectedStudent.section}\nField: ${selectedStudent.field}\nCourse: ${selectedStudent.course}\nArea: ${selectedStudent.deployment_area}\nLRN: ${selectedStudent.lrn}\n\n`
-    csvContent += "Day,Date,AM Arrival,AM Departure,PM Arrival,PM Departure,Undertime (Hrs),Total Hours\n"
+    csvContent += "Day,Date,Morning In,Morning Out,Afternoon In,Afternoon Out,Total Hours\n"
     let grandTotal = 0;
 
     attendance.forEach((rec, index) => {
       const dayNum = index + 1;
-      const tIn = rec.time_in ? rec.time_in.split(':').map(Number) : null;
-      const tOut = rec.time_out ? rec.time_out.split(':').map(Number) : null;
-      let amArrival = "-", amDeparture = "-", pmArrival = "-", pmDeparture = "-";
-      let totalHrs = 0;
-
-      if (tIn && tOut) {
-        const formatTime = (h: number, m: number) => {
-          const ampm = h >= 12 ? 'PM' : 'AM';
-          const h12 = h % 12 || 12;
-          return `${h12.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${ampm}`;
-        };
-        const formattedIn = formatTime(tIn[0], tIn[1]);
-        const formattedOut = formatTime(tOut[0], tOut[1]);
-        totalHrs = parseFloat(computeHours(rec.time_in, rec.time_out));
-        
-        if (tIn[0] < 12) {
-          amArrival = formattedIn;
-          if (tOut[0] < 13) amDeparture = formattedOut;
-        }
-        if (tIn[0] >= 12 || tOut[0] >= 13) {
-          if (tIn[0] < 12 && tOut[0] >= 13) { amDeparture = "12:00 PM"; pmArrival = "01:00 PM"; } 
-          else if (tIn[0] >= 12) { pmArrival = formattedIn; }
-          pmDeparture = formattedOut;
-        }
-      }
+      const totalHrs = parseFloat(rec.total_hours?.toString() || '0')
       grandTotal += totalHrs;
-      csvContent += `${dayNum},${rec.date},${amArrival},${amDeparture},${pmArrival},${pmDeparture},${totalHrs > 0 ? '0' : '-'},${totalHrs.toFixed(2)}\n`;
+      csvContent += `${dayNum},${rec.date},${rec.morning_in || '-'},${rec.morning_out || '-'},${rec.afternoon_in || '-'},${rec.afternoon_out || '-'},${totalHrs.toFixed(2)}\n`;
     })
     csvContent += `\n\nTOTAL HOURS:,${grandTotal.toFixed(2)}\n`
 
@@ -199,7 +198,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
   return (
     <div className="min-h-screen relative pb-10">
-      {/* HEADER */}
       <div className="glass-panel p-4 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto flex justify-between items-center">
           <div>
@@ -214,13 +212,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
       <div className="max-w-5xl mx-auto p-4 space-y-6 mt-2">
         
-        {/* TABS */}
         <div className="flex flex-wrap gap-2 p-1.5 bg-white/40 backdrop-blur-md rounded-2xl border border-white/50 w-fit">
           <button onClick={() => setActiveTab('directory')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'directory' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><Users size={16} /> Directory</button>
-          <button onClick={() => setActiveTab('approvals')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'approvals' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><UserPlus size={16} /> Approvals {pendingStudents.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length}</span>}</button>
+          <button onClick={() => setActiveTab('approvals')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'approvals' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><UserPlus size={16} /> Approvals {pendingStudents.length + pendingTeachers.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length + pendingTeachers.length}</span>}</button>
         </div>
 
-        {/* QUICK ACTIONS */}
         <div className="flex gap-3">
           <button onClick={onOpenScores} className="glass-card px-5 py-3 rounded-2xl flex items-center gap-2 font-bold text-gray-700 hover:bg-white/90 transition-colors"><CalendarCheck size={18} className="text-blue-600" /> Manage Scores</button>
           <button onClick={onOpenAnnouncements} className="glass-card px-5 py-3 rounded-2xl flex items-center gap-2 font-bold text-gray-700 hover:bg-white/90 transition-colors"><BookOpen size={18} className="text-blue-600" /> Announcements</button>
@@ -295,9 +291,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                           </td>
                         </tr>
                       ))}
-                      {filteredStudents.length === 0 && (
-                        <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-500 font-medium">Walang nahanap na estudyante base sa filter.</td></tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
@@ -308,29 +301,57 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
         {/* APPROVALS TAB */}
         {activeTab === 'approvals' && (
-          <div className="glass-card rounded-3xl overflow-hidden">
-            <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Student Registrations</h2></div>
-            {pendingStudents.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na estudyante.</div> : (
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-white/30 border-b border-white/50 text-gray-600">
-                  <tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Name</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Field & Course</th><th className="px-5 py-4 font-bold text-right">Action</th></tr>
-                </thead>
-                <tbody className="divide-y divide-white/40">
-                  {pendingStudents.map(student => (
-                    <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
-                      <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td>
-                      <td className="px-5 py-4 font-bold text-gray-800">{student.last_name}, {student.first_name}</td>
-                      <td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td>
-                      <td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.field} <br/> {student.course}</td>
-                      <td className="px-5 py-4 text-right flex justify-end gap-2">
-                        <button onClick={() => handleApprove(student.lrn)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-green-200 transition-colors"><CheckCircle size={16} /> Approve</button>
-                        <button onClick={() => handleReject(student.lrn)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-red-200 transition-colors"><XCircle size={16} /> Reject</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+          <div className="space-y-6">
+            <div className="glass-card rounded-3xl overflow-hidden">
+              <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Student Registrations</h2></div>
+              {pendingStudents.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na estudyante.</div> : (
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-white/30 border-b border-white/50 text-gray-600">
+                    <tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Name</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Field & Course</th><th className="px-5 py-4 font-bold text-right">Action</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/40">
+                    {pendingStudents.map(student => (
+                      <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
+                        <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td>
+                        <td className="px-5 py-4 font-bold text-gray-800">{student.last_name}, {student.first_name}</td>
+                        <td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td>
+                        <td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.field} <br/> {student.course}</td>
+                        <td className="px-5 py-4 text-right flex justify-end gap-2">
+                          <button onClick={() => handleApprove(student.lrn)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-green-200 transition-colors"><CheckCircle size={16} /> Approve</button>
+                          <button onClick={() => handleReject(student.lrn)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-red-200 transition-colors"><XCircle size={16} /> Reject</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="glass-card rounded-3xl overflow-hidden">
+              <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Teacher Registrations</h2></div>
+              {pendingTeachers.length === 0 ? (
+                <div className="p-10 text-center text-gray-500 font-medium">Walang pending na teacher.</div>
+              ) : (
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-white/30 border-b border-white/50 text-gray-600">
+                    <tr><th className="px-5 py-4 font-bold">Email</th><th className="px-5 py-4 font-bold">Role</th><th className="px-5 py-4 font-bold">Date Registered</th><th className="px-5 py-4 font-bold text-right">Action</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/40">
+                    {pendingTeachers.map(t => (
+                      <tr key={t.email} className="hover:bg-white/40 transition-colors">
+                        <td className="px-5 py-4 font-bold text-gray-800">{t.email}</td>
+                        <td className="px-5 py-4 text-gray-600">{t.role}</td>
+                        <td className="px-5 py-4 text-gray-600">{new Date(t.created_at).toLocaleDateString()}</td>
+                        <td className="px-5 py-4 text-right flex justify-end gap-2">
+                          <button onClick={() => handleApproveTeacher(t.email)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors"><CheckCircle size={16} /> Approve</button>
+                          <button onClick={() => handleRejectTeacher(t.email)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors"><XCircle size={16} /> Reject</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -365,19 +386,35 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                     <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden">
                       <table className="w-full text-left text-sm whitespace-nowrap">
                         <thead className="bg-white/80 border-b border-gray-100 text-gray-600">
-                          <tr><th className="px-5 py-3 font-bold">Date</th><th className="px-5 py-3 font-bold">Time In</th><th className="px-5 py-3 font-bold">Time Out</th><th className="px-5 py-3 font-bold">Photos</th><th className="px-5 py-3 font-bold text-right">Total</th></tr>
+                          <tr>
+                            <th className="px-4 py-3 font-bold">Date</th>
+                            <th className="px-4 py-3 font-bold text-center">Morning In/Out</th>
+                            <th className="px-4 py-3 font-bold text-center">Afternoon In/Out</th>
+                            <th className="px-4 py-3 font-bold">Photos</th>
+                            <th className="px-4 py-3 font-bold text-right">Total</th>
+                            <th className="px-4 py-3 font-bold text-right">Actions</th>
+                          </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {attendance.map(rec => (
                             <tr key={rec.id} className="hover:bg-white transition-colors">
-                              <td className="px-5 py-3 text-gray-800 font-medium">{rec.date}</td>
-                              <td className="px-5 py-3 text-gray-600 font-mono text-xs">{rec.time_in || '-'}</td>
-                              <td className="px-5 py-3 text-gray-600 font-mono text-xs">{rec.time_out || '-'}</td>
-                              <td className="px-5 py-3 flex gap-2">
-                                {rec.time_in_photo && <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold hover:bg-blue-200 transition-colors">In Photo</button>}
-                                {rec.time_out_photo && <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-bold hover:bg-orange-200 transition-colors">Out Photo</button>}
+                              <td className="px-4 py-3 text-gray-800 font-medium">{rec.date}</td>
+                              <td className="px-4 py-3 text-gray-600 font-mono text-xs text-center">
+                                {rec.morning_in ? rec.morning_in : '-'} / {rec.morning_out ? rec.morning_out : '-'}
                               </td>
-                              <td className="px-5 py-3 text-blue-600 font-extrabold text-right">{computeHours(rec.time_in, rec.time_out)} hrs</td>
+                              <td className="px-4 py-3 text-gray-600 font-mono text-xs text-center">
+                                {rec.afternoon_in ? rec.afternoon_in : '-'} / {rec.afternoon_out ? rec.afternoon_out : '-'}
+                              </td>
+                              <td className="px-4 py-3 flex gap-2">
+                                {rec.time_in_photo && <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold hover:bg-blue-200 transition-colors">In</button>}
+                                {rec.time_out_photo && <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-bold hover:bg-orange-200 transition-colors">Out</button>}
+                              </td>
+                              <td className="px-4 py-3 text-blue-600 font-extrabold text-right">{rec.total_hours || 0} hrs</td>
+                              <td className="px-4 py-3 text-right">
+                                <button onClick={() => handleResetAttendance(rec.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded-lg transition-colors" title="Reset Attendance">
+                                  <RotateCcw size={16} />
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
