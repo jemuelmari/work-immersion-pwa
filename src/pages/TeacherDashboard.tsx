@@ -10,6 +10,7 @@ interface RequirementRecord { id: string; requirement_name: string; file_name: s
 interface ResetRequest { id: string; lrn: string; reason: string; status: string; requested_at: string; student_name?: string; }
 
 const normalizeName = (str: string) => {
+  if (!str) return '';
   return str.trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())
 }
 
@@ -123,19 +124,18 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setIsSavingEdit(true)
     try {
       const { error } = await supabase.from('students').update({
-        first_name: normalizeName(editFormData.first_name),
-        last_name: normalizeName(editFormData.last_name),
+        first_name: normalizeName(editFormData.first_name) || 'Unknown',
+        last_name: normalizeName(editFormData.last_name) || 'Unknown',
         middle_name: normalizeName(editFormData.middle_name),
-        sex: editFormData.sex,
-        section: editFormData.section,
-        field: editFormData.field,
-        course: editFormData.course,
-        deployment_area: editFormData.deployment_area
+        sex: editFormData.sex || 'Male',
+        section: editFormData.section || '12 GAS',
+        field: editFormData.field || 'Health',
+        course: editFormData.course || 'Nursing',
+        deployment_area: editFormData.deployment_area || ''
       }).eq('lrn', editFormData.lrn)
 
       if (error) throw error
       
-      // AYOS: I-close agad ang modal at i-refresh ang listahan
       setEditingStudent(null)
       setEditFormData(null)
       fetchStudents()
@@ -151,21 +151,33 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const approvedStudents = students.filter(s => s.status === 'Approved')
   const pendingStudents = students.filter(s => s.status === 'Pending')
 
+  // === SAFE FILTER AND SORT LOGIC ===
   const filteredStudents = approvedStudents.filter(s => {
-    const matchesSearch = s.last_name.toLowerCase().includes(searchTerm.toLowerCase()) || s.first_name.toLowerCase().includes(searchTerm.toLowerCase()) || s.lrn.includes(searchTerm);
+    const matchesSearch = (s.last_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (s.first_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (s.lrn || '').includes(searchTerm);
     const matchesSection = filterSection === 'All' || s.section === filterSection;
     const matchesSex = filterSex === 'All' || s.sex === filterSex;
     return matchesSearch && matchesSection && matchesSex;
   }).sort((a, b) => {
-    if (a.sex !== b.sex) return a.sex.localeCompare(b.sex);
-    if (a.last_name !== b.last_name) return a.last_name.localeCompare(b.last_name);
-    return a.first_name.localeCompare(b.first_name);
+    // Safe sorting with fallback to empty string
+    const sexA = a.sex || '';
+    const sexB = b.sex || '';
+    if (sexA !== sexB) return sexA.localeCompare(sexB);
+    
+    const lastA = a.last_name || '';
+    const lastB = b.last_name || '';
+    if (lastA !== lastB) return lastA.localeCompare(lastB);
+    
+    const firstA = a.first_name || '';
+    const firstB = b.first_name || '';
+    return firstA.localeCompare(firstB);
   })
 
   const handleExportStudents = () => {
     let csvContent = "LRN,Last Name,First Name,Middle Name,Sex,Section,Field,Course,Deployment Area\n"
     filteredStudents.forEach(s => {
-      csvContent += `${s.lrn},"${s.last_name}","${s.first_name}","${s.middle_name || ''}",${s.sex},${s.section},${s.field},${s.course},${s.deployment_area}\n`
+      csvContent += `${s.lrn},"${s.last_name || ''}","${s.first_name || ''}","${s.middle_name || ''}",${s.sex || ''},${s.section || ''},${s.field || ''},${s.course || ''},${s.deployment_area || ''}\n`
     })
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement("a")
@@ -217,7 +229,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
   const handleExportDTR = () => {
     if (!selectedStudent || attendance.length === 0) return
-    let csvContent = `DAILY TIME RECORD\nName: ${selectedStudent.last_name}, ${selectedStudent.first_name}\nSection: ${selectedStudent.section}\nField: ${selectedStudent.field}\nCourse: ${selectedStudent.course}\nArea: ${selectedStudent.deployment_area}\nLRN: ${selectedStudent.lrn}\n\n`
+    let csvContent = `DAILY TIME RECORD\nName: ${selectedStudent.last_name || ''}, ${selectedStudent.first_name || ''}\nSection: ${selectedStudent.section || ''}\nField: ${selectedStudent.field || ''}\nCourse: ${selectedStudent.course || ''}\nArea: ${selectedStudent.deployment_area || ''}\nLRN: ${selectedStudent.lrn || ''}\n\n`
     csvContent += "Day,Date,Morning In,Morning Out,Afternoon In,Afternoon Out,Total Hours\n"
     let grandTotal = 0;
     attendance.forEach((rec, index) => {
@@ -230,7 +242,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement("a")
     link.setAttribute("href", URL.createObjectURL(blob))
-    link.setAttribute("download", `DTR_DepEd48_${selectedStudent.last_name}_${selectedStudent.first_name}.csv`)
+    link.setAttribute("download", `DTR_DepEd48_${selectedStudent.last_name || ''}_${selectedStudent.first_name || ''}.csv`)
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
@@ -420,11 +432,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">First Name</label>
-                <input type="text" value={editFormData.first_name} onChange={(e) => setEditFormData({...editFormData, first_name: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none" />
+                <input type="text" value={editFormData.first_name || ''} onChange={(e) => setEditFormData({...editFormData, first_name: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Last Name</label>
-                <input type="text" value={editFormData.last_name} onChange={(e) => setEditFormData({...editFormData, last_name: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none" />
+                <input type="text" value={editFormData.last_name || ''} onChange={(e) => setEditFormData({...editFormData, last_name: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Middle Name</label>
@@ -432,14 +444,14 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Sex</label>
-                <select value={editFormData.sex} onChange={(e) => setEditFormData({...editFormData, sex: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none">
+                <select value={editFormData.sex || 'Male'} onChange={(e) => setEditFormData({...editFormData, sex: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none">
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Section</label>
-                <select value={editFormData.section} onChange={(e) => setEditFormData({...editFormData, section: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none">
+                <select value={editFormData.section || '12 GAS'} onChange={(e) => setEditFormData({...editFormData, section: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none">
                   <option value="12 GAS">12 GAS</option>
                   <option value="12 HUMSS">12 HUMSS</option>
                 </select>
@@ -460,8 +472,8 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             <div className="p-6 border-b border-white/50 bg-white/40 flex justify-between items-start">
               <div>
                 <h3 className="text-xl font-extrabold text-gray-800">Student Records</h3>
-                <p className="text-sm text-gray-600 font-medium mt-1">{selectedStudent.last_name}, {selectedStudent.first_name} ({selectedStudent.lrn})</p>
-                <p className="text-xs text-blue-600 font-bold mt-1 bg-blue-50 px-2 py-1 rounded w-fit">{selectedStudent.field} | {selectedStudent.course} | {selectedStudent.deployment_area}</p>
+                <p className="text-sm text-gray-600 font-medium mt-1">{selectedStudent.last_name || ''}, {selectedStudent.first_name || ''} ({selectedStudent.lrn || ''})</p>
+                <p className="text-xs text-blue-600 font-bold mt-1 bg-blue-50 px-2 py-1 rounded w-fit">{selectedStudent.field || ''} | {selectedStudent.course || ''} | {selectedStudent.deployment_area || ''}</p>
               </div>
               <button onClick={() => setSelectedStudent(null)} className="text-gray-400 hover:text-gray-600 p-2 bg-white/50 rounded-full transition-colors"><X size={20} /></button>
             </div>
