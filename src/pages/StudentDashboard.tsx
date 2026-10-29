@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Wifi, WifiOff, Clock, Camera, CheckCircle, RefreshCw, LogOut, BookOpen, FileText } from 'lucide-react'
+import { Wifi, WifiOff, Clock, Camera, CheckCircle, RefreshCw, LogOut, BookOpen, FileText, Sun, Moon } from 'lucide-react'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 
@@ -8,17 +8,18 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
   const { user, logout } = useAuth()
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [time, setTime] = useState(new Date())
-  const [hasTimedIn, setHasTimedIn] = useState(false)
-  const [hasTimedOut, setHasTimedOut] = useState(false)
   const [pendingSyncs, setPendingSyncs] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
   const [announcement, setAnnouncement] = useState<{title: string, body: string} | null>(null)
+  
+  // Attendance States
+  const [todayRecord, setTodayRecord] = useState<any>(null)
+  const [cameraMode, setCameraMode] = useState<'MORNING_IN' | 'MORNING_OUT' | 'AFTERNOON_IN' | 'AFTERNOON_OUT'>('MORNING_IN')
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isCameraOpen, setIsCameraOpen] = useState(false)
   const [stream, setStream] = useState<MediaStream | null>(null)
-  const [cameraMode, setCameraMode] = useState<'TIME_IN' | 'TIME_OUT'>('TIME_IN')
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000)
@@ -33,23 +34,21 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
     }
   }, [])
 
-  const checkStatus = async () => {
+  const fetchTodayRecord = async () => {
     const count = await db.syncQueue.where('status').equals('pending').count()
     setPendingSyncs(count)
     
     if (isOnline && user?.id) {
       const today = new Date().toLocaleDateString('en-CA') 
       const { data } = await supabase.from('attendance').select('*').eq('lrn', user.id).eq('date', today).single()
-      if (data) {
-        setHasTimedIn(true)
-        if (data.time_out) setHasTimedOut(true)
-      }
+      if (data) setTodayRecord(data)
+      
       const { data: annData } = await supabase.from('announcements').select('*').order('created_at', {ascending: false}).limit(1)
       if (annData && annData.length > 0) setAnnouncement(annData[0])
     }
   }
 
-  useEffect(() => { checkStatus() }, [isOnline, hasTimedIn, hasTimedOut])
+  useEffect(() => { fetchTodayRecord() }, [isOnline])
 
   const uploadPhoto = async (base64Data: string, action: string) => {
     if (!isOnline) return base64Data
@@ -71,12 +70,9 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
     for (const item of pendingItems) {
       let isSuccess = false;
       try {
-        if (item.action === 'TIME_IN') {
-          const { error } = await supabase.from('attendance').insert({ lrn: item.payload.lrn, date: item.payload.date, time_in: item.payload.time, time_in_photo: item.payload.photo_url })
-          if (error && error.code !== '23505') throw error
-          isSuccess = true;
-        } else if (item.action === 'TIME_OUT') {
-          const { error } = await supabase.from('attendance').update({ time_out: item.payload.time, time_out_photo: item.payload.photo_url }).eq('lrn', item.payload.lrn).eq('date', item.payload.date)
+        if (item.action.startsWith('MORNING') || item.action.startsWith('AFTERNOON')) {
+          // Dito natin i-upsert ang buong record para hindi magulo
+          const { error } = await supabase.from('attendance').upsert(item.payload, { onConflict: 'lrn,date' })
           if (error) throw error
           isSuccess = true;
         }
@@ -84,10 +80,10 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
       if (isSuccess) await db.syncQueue.delete(item.id!)
     }
     setIsSyncing(false)
-    checkStatus()
+    fetchTodayRecord()
   }
 
-  const startCamera = async (mode: 'TIME_IN' | 'TIME_OUT') => {
+  const startCamera = async (mode: 'MORNING_IN' | 'MORNING_OUT' | 'AFTERNOON_IN' | 'AFTERNOON_OUT') => {
     setCameraMode(mode)
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
@@ -112,22 +108,58 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
     const photoBase64 = canvas.toDataURL('image/jpeg', 0.4)
     stopCamera()
     const photoUrl = await uploadPhoto(photoBase64, cameraMode)
+    
     const now = new Date()
     const today = now.toLocaleDateString('en-CA') 
     const timeStr = now.toLocaleTimeString('en-GB', { hour12: false })
+
+    // I-prepare ang payload para sa upsert (para isang record lang per day)
+    let payload: any = {
+      lrn: user?.id,
+      date: today,
+      time_in_photo: todayRecord?.time_in_photo || null, // Default sa lumang photo kung meron
+      time_out_photo: todayRecord?.time_out_photo || null
+    }
+
+    if (todayRecord) payload = { ...todayRecord, ...payload }
+
+    // I-set ang tamang field base sa mode
+    if (cameraMode === 'MORNING_IN') {
+      payload.morning_in = timeStr
+      payload.time_in_photo = photoUrl
+    } else if (cameraMode === 'MORNING_OUT') {
+      payload.morning_out = timeStr
+    } else if (cameraMode === 'AFTERNOON_IN') {
+      payload.afternoon_in = timeStr
+    } else if (cameraMode === 'AFTERNOON_OUT') {
+      payload.afternoon_out = timeStr
+      payload.time_out_photo = photoUrl
+    }
+
     await db.syncQueue.add({
       action: cameraMode,
-      payload: { lrn: user?.id, date: today, time: timeStr, photo_url: photoUrl },
+      payload: payload,
       status: 'pending', createdAt: now.toISOString()
     })
-    if (cameraMode === 'TIME_IN') setHasTimedIn(true)
-    else setHasTimedOut(true)
-    checkStatus()
+    
+    setTodayRecord(payload) // I-update ang UI agad
+    fetchTodayRecord()
   }
+
+  // Helper para malaman kung anong button ang lalabas
+  const getButtonState = () => {
+    if (!todayRecord) return 'MORNING_IN'
+    if (!todayRecord.morning_in) return 'MORNING_IN'
+    if (!todayRecord.morning_out) return 'MORNING_OUT'
+    if (!todayRecord.afternoon_in) return 'AFTERNOON_IN'
+    if (!todayRecord.afternoon_out) return 'AFTERNOON_OUT'
+    return 'COMPLETED'
+  }
+
+  const currentState = getButtonState()
 
   return (
     <div className="min-h-screen pb-20">
-      {/* HEADER */}
       <div className="glass-panel p-4 sticky top-0 z-10 flex justify-between items-center">
         <div>
           <h1 className="font-bold text-gray-800 text-lg">Hello, {user?.name.split(' ')[0]}!</h1>
@@ -140,7 +172,6 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
       </div>
 
       <div className="p-4 max-w-md mx-auto space-y-4 mt-2">
-        {/* ANNOUNCEMENT */}
         {announcement && (
           <div className="glass-card p-4 rounded-2xl text-blue-800 text-sm border-l-4 border-l-blue-500">
             <h3 className="font-bold mb-1 flex items-center gap-1">📢 {announcement.title}</h3>
@@ -148,11 +179,9 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
           </div>
         )}
 
-        {/* ALERTS */}
         {!isOnline && <div className="bg-red-50/80 backdrop-blur-md text-red-700 p-3 rounded-2xl text-sm text-center border border-red-100 font-medium">Offline ka ngayon. Ang data ay awtomatikong ipapadala kapag may net na.</div>}
         {isSyncing && <div className="bg-blue-50/80 backdrop-blur-md text-blue-700 p-3 rounded-2xl text-sm flex items-center justify-center gap-2 border border-blue-100 font-medium"><RefreshCw className="animate-spin" size={16} /> Nag-sa-sync...</div>}
 
-        {/* TIME IN / OUT CARD */}
         <div className="glass-card p-6 rounded-3xl text-center">
           <div className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 tracking-tight mb-1">
             {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -165,7 +194,9 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
             <div className="space-y-3">
               <div className="relative rounded-2xl overflow-hidden bg-black aspect-square w-full max-w-[280px] mx-auto shadow-lg">
                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                <div className="absolute top-2 left-2 bg-black/50 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium">{cameraMode === 'TIME_IN' ? 'Time In' : 'Time Out'}</div>
+                <div className="absolute top-2 left-2 bg-black/50 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium">
+                  {cameraMode.replace('_', ' ')}
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={stopCamera} className="flex-1 py-3 rounded-xl bg-gray-200/80 text-gray-700 font-bold hover:bg-gray-300/80 transition-colors">Cancel</button>
@@ -174,61 +205,54 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
             </div>
           ) : (
             <div className="space-y-3">
-              {!hasTimedIn && (
-                <button onClick={() => startCamera('TIME_IN')} className="glass-button-primary w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 text-white">
-                  <Camera size={28} />
-                  <span className="font-bold text-lg">Time In Now</span>
+              {currentState === 'MORNING_IN' && (
+                <button onClick={() => startCamera('MORNING_IN')} className="glass-button-primary w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 text-white">
+                  <Sun size={28} /><span className="font-bold text-lg">Morning Time In</span>
                 </button>
               )}
-              {hasTimedIn && !hasTimedOut && (
-                <button onClick={() => startCamera('TIME_OUT')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-orange-400 to-orange-500 text-white font-bold shadow-lg shadow-orange-200 hover:from-orange-500 hover:to-orange-600 transition-all">
-                  <LogOut size={28} />
-                  <span className="text-lg">Time Out Now</span>
+              {currentState === 'MORNING_OUT' && (
+                <button onClick={() => startCamera('MORNING_OUT')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-orange-400 to-orange-500 text-white font-bold shadow-lg shadow-orange-200 hover:from-orange-500 hover:to-orange-600 transition-all">
+                  <Sun size={28} /><span className="text-lg">Morning Time Out</span>
                 </button>
               )}
-              {hasTimedIn && hasTimedOut && (
+              {currentState === 'AFTERNOON_IN' && (
+                <button onClick={() => startCamera('AFTERNOON_IN')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-blue-400 to-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:from-blue-500 hover:to-blue-700 transition-all">
+                  <Moon size={28} /><span className="text-lg">Afternoon Time In</span>
+                </button>
+              )}
+              {currentState === 'AFTERNOON_OUT' && (
+                <button onClick={() => startCamera('AFTERNOON_OUT')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-indigo-400 to-indigo-600 text-white font-bold shadow-lg shadow-indigo-200 hover:from-indigo-500 hover:to-indigo-700 transition-all">
+                  <Moon size={28} /><span className="text-lg">Afternoon Time Out</span>
+                </button>
+              )}
+              {currentState === 'COMPLETED' && (
                 <div className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gray-100/50 text-gray-400 border border-gray-200">
-                  <CheckCircle size={28} />
-                  <span className="font-bold text-lg">Completed for today!</span>
+                  <CheckCircle size={28} /><span className="font-bold text-lg">Completed for today!</span>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* QUICK LINKS */}
         <div className="grid grid-cols-2 gap-3">
           <button onClick={onOpenDiary} className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-white/90 transition-colors">
-            <div className="bg-blue-100 text-blue-600 p-2 rounded-xl">
-              <BookOpen size={24} />
-            </div>
+            <div className="bg-blue-100 text-blue-600 p-2 rounded-xl"><BookOpen size={24} /></div>
             <span className="font-bold text-sm text-gray-700">My Diary</span>
           </button>
-
           <button onClick={onOpenRequirements} className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-white/90 transition-colors">
-            <div className="bg-green-100 text-green-600 p-2 rounded-xl">
-              <FileText size={24} />
-            </div>
+            <div className="bg-green-100 text-green-600 p-2 rounded-xl"><FileText size={24} /></div>
             <span className="font-bold text-sm text-gray-700">Requirements</span>
           </button>
         </div>
 
-        {/* PENDING SYNC ALERT */}
         {pendingSyncs > 0 && (
           <div className="glass-card p-4 rounded-2xl flex items-center justify-between text-yellow-800 text-sm">
-            <div className="flex items-center gap-3">
-              <Clock size={20} className="shrink-0 text-yellow-600" />
-              <p>May <strong>{pendingSyncs}</strong> kang pending.</p>
-            </div>
-            <button onClick={syncData} disabled={!isOnline || isSyncing} className="bg-yellow-200/80 hover:bg-yellow-300 text-yellow-900 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors disabled:opacity-50 backdrop-blur-sm">
-              Sync Now
-            </button>
+            <div className="flex items-center gap-3"><Clock size={20} className="shrink-0 text-yellow-600" /><p>May <strong>{pendingSyncs}</strong> kang pending.</p></div>
+            <button onClick={syncData} disabled={!isOnline || isSyncing} className="bg-yellow-200/80 hover:bg-yellow-300 text-yellow-900 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors disabled:opacity-50 backdrop-blur-sm">Sync Now</button>
           </div>
         )}
 
-        <button onClick={logout} className="w-full text-red-500/80 text-sm font-bold py-3 hover:text-red-600 transition-colors">
-          Logout
-        </button>
+        <button onClick={logout} className="w-full text-red-500/80 text-sm font-bold py-3 hover:text-red-600 transition-colors">Logout</button>
       </div>
       <canvas ref={canvasRef} className="hidden" />
     </div>
