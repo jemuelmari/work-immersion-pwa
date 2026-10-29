@@ -14,7 +14,6 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
   const [existingImages, setExistingImages] = useState<string[]>([])
   const [message, setMessage] = useState({ type: '', text: '' })
   
-  // States para sa Grade
   const [score, setScore] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
 
@@ -66,7 +65,6 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
       }
     }
 
-    // Kapag nag-save ng bagong entry, hindi natin ginalaw ang score para hindi mawala
     const { error } = await supabase.from('diary').upsert({
       lrn: user?.id, day_number: dayNumber, date: today, entry_text: entryText, image_urls: uploadedUrls
     }, { onConflict: 'lrn,day_number' })
@@ -132,7 +130,7 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        {/* GRADE DISPLAY SECTION */}
+        {/* GRADE DISPLAY SECTION WITH RUBRIC GUIDE */}
         {(score !== null || feedback) && (
           <div className="glass-card p-6 rounded-3xl border-l-4 border-l-green-500 bg-green-50/30">
             <h3 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2"><Star className="text-yellow-500" size={20} /> Teacher's Grade</h3>
@@ -143,6 +141,16 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
                 <span className="text-3xl font-extrabold text-green-600">{score}<span className="text-lg text-gray-400">/100</span></span>
               </div>
             )}
+
+            <div className="mb-4 bg-white/40 p-4 rounded-xl border border-white/60">
+              <p className="text-xs font-bold text-gray-600 uppercase mb-2">Paano ka gina-grade:</p>
+              <ul className="text-xs text-gray-600 space-y-1.5">
+                <li><span className="font-bold text-gray-700">Content & Substance (30):</span> Detalye ng karanasan at mga natutunan.</li>
+                <li><span className="font-bold text-gray-700">Organization & Clarity (20):</span> Maayos ba ang daloy ng kwento?</li>
+                <li><span className="font-bold text-gray-700">Depth of Reflection (30):</span> May malalim bang pagninilay?</li>
+                <li><span className="font-bold text-gray-700">Grammar & Mechanics (20):</span> Wastong baybay at bantas.</li>
+              </ul>
+            </div>
 
             {feedback && (
               <div>
