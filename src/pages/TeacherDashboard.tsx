@@ -218,12 +218,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setIsGradingModalOpen(true)
   }
 
-  // === AYOS NA ANG GRADING LOGIC ===
+  // === ITO ANG AYOS NA GRADING LOGIC ===
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
     setSavingGrades(true)
 
     try {
+      // Compute total score
       let totalScore = 0
       RUBRIC_CATEGORIES.forEach(cat => {
         const score = parseFloat(gradingScores[cat.id] || '0')
@@ -240,7 +241,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         }, { onConflict: 'diary_id,criteria' })
       }
 
-      // 2. I-UPDATE TALAGA ANG DIARY TABLE (imbes na upsert na nag-fa-fail)
+      // 2. I-UPDATE TALAGA ANG DIARY TABLE
       const { error: updateError } = await supabase
         .from('diary')
         .update({
@@ -251,7 +252,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
       if (updateError) throw updateError
 
-      // 3. I-refresh ang diary list para lumabas agad ang bagong score
+      // 3. I-REFRESH ANG DIARY LIST PARA LUMABAS AGAD
       if (selectedStudent) {
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
         if (data) setDiary(data)
