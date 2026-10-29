@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/db'
 import { Upload, FileText, ArrowLeft, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
 
-// BAGONG LISTAHAN NG REQUIREMENTS BASE SA BINIGAY MO
 const REQUIRED_DOCS = [
   "Parental Consent",
   "Application Letter and Resume",
@@ -126,44 +125,53 @@ export default function StudentRequirements({ onBack }: { onBack: () => void }) 
   const progressPercent = Math.round((uploadedCount / REQUIRED_DOCS.length) * 100)
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-4">
-        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full"><ArrowLeft size={24} /></button>
-        <h1 className="font-bold text-gray-800">My Requirements</h1>
+    <div className="min-h-screen pb-20">
+      <div className="glass-panel p-4 sticky top-0 z-10 flex items-center gap-4">
+        <button onClick={onBack} className="p-2 hover:bg-white/50 rounded-full transition-colors"><ArrowLeft size={24} className="text-gray-700" /></button>
+        <h1 className="font-bold text-gray-800 text-lg">My Requirements</h1>
       </div>
 
-      <div className="p-4 max-w-md mx-auto space-y-4">
+      <div className="p-4 max-w-md mx-auto space-y-4 mt-2">
         {!isOnline && (
-          <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm text-center border border-red-100 flex items-center justify-center gap-2">
+          <div className="bg-red-50/80 backdrop-blur-md text-red-700 p-3 rounded-2xl text-sm text-center border border-red-100 font-medium flex items-center justify-center gap-2">
             <XCircle size={16} /> Offline ka ngayon. Ang upload ay makakapasok kapag may net na.
           </div>
         )}
 
         {/* CHECKLIST */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 bg-gray-50 border-b border-gray-100">
-            <h2 className="font-bold text-sm text-gray-700">Checklist ng mga Requirements</h2>
+        <div className="glass-card rounded-3xl overflow-hidden">
+          <div className="p-4 bg-white/40 border-b border-white/50 backdrop-blur-sm">
+            <h2 className="font-bold text-sm text-gray-800">Checklist ng mga Requirements</h2>
           </div>
           
           {loading ? (
-            <div className="p-8 text-center text-gray-400">Loading...</div>
+            <div className="p-8 text-center text-gray-500">Loading...</div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-white/40">
               {requirements.map(req => (
-                <div key={req.name} className="p-4 flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      {req.status === 'Uploaded' ? <CheckCircle className="text-green-500" size={20} /> : <XCircle className="text-gray-300" size={20} />}
-                      <p className={`text-sm font-medium ${req.status === 'Uploaded' ? 'text-gray-800' : 'text-gray-500'}`}>{req.name}</p>
+                <div key={req.name} className="p-4 flex flex-col gap-3 hover:bg-white/30 transition-colors">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-start gap-3">
+                      {req.status === 'Uploaded' ? <CheckCircle className="text-green-500 mt-0.5 shrink-0" size={20} /> : <XCircle className="text-gray-300 mt-0.5 shrink-0" size={20} />}
+                      <div>
+                        <p className={`text-sm font-semibold ${req.status === 'Uploaded' ? 'text-gray-800' : 'text-gray-500'}`}>{req.name}</p>
+                        {req.status === 'Uploaded' && (
+                          <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1 mt-1">
+                            <FileText size={12} /> View Uploaded PDF
+                          </a>
+                        )}
+                      </div>
                     </div>
-                    {req.status === 'Uploaded' && (
-                      <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1">
-                        <FileText size={14} /> View
-                      </a>
-                    )}
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <label className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg cursor-pointer text-xs font-bold transition-colors ${uploadingId === req.name ? 'bg-gray-200 text-gray-500' : req.status === 'Uploaded' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
+                  
+                  <div className="flex items-center gap-2">
+                    <label className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl cursor-pointer text-xs font-bold transition-all ${
+                      uploadingId === req.name 
+                        ? 'bg-gray-200 text-gray-500' 
+                        : req.status === 'Uploaded' 
+                          ? 'bg-white/60 text-gray-700 border border-gray-200 hover:bg-white' 
+                          : 'glass-button-primary text-white'
+                    }`}>
                       {uploadingId === req.name ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
                       {uploadingId === req.name ? 'Nag-a-upload...' : req.status === 'Uploaded' ? 'Re-upload (Palitan)' : 'Upload PDF'}
                       <input type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUpload(e, req.name)} disabled={uploadingId !== null} />
@@ -175,26 +183,25 @@ export default function StudentRequirements({ onBack }: { onBack: () => void }) 
           )}
         </div>
 
-        {/* PROGRESS BAR SA PINAKABABA */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center mb-2">
-            <h2 className="font-bold text-gray-800">Upload Progress</h2>
-            <span className={`font-bold ${progressPercent === 100 ? 'text-green-600' : 'text-blue-600'}`}>{progressPercent}%</span>
+        {/* PROGRESS BAR */}
+        <div className="glass-card p-6 rounded-3xl">
+          <div className="flex justify-between items-end mb-4">
+            <div>
+              <h2 className="font-bold text-gray-800">Upload Progress</h2>
+              <p className="text-xs text-gray-500 font-medium mt-1">{uploadedCount} sa {REQUIRED_DOCS.length} requirements</p>
+            </div>
+            <span className={`text-3xl font-extrabold ${progressPercent === 100 ? 'text-green-500' : 'text-blue-600'}`}>{progressPercent}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
-            <div className={`h-3 rounded-full transition-all duration-500 ${progressPercent === 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${progressPercent}%` }}></div>
+          <div className="w-full bg-gray-200/50 rounded-full h-4 mb-4 overflow-hidden shadow-inner">
+            <div className={`h-full rounded-full transition-all duration-500 ease-out ${progressPercent === 100 ? 'bg-green-500' : 'bg-gradient-to-r from-blue-400 to-blue-600'}`} style={{ width: `${progressPercent}%` }}></div>
           </div>
-          <p className="text-xs text-gray-500 text-center mb-4">
-            {uploadedCount} sa {REQUIRED_DOCS.length} requirements ang na-upload.
-          </p>
           
           {uploadedCount > 0 && (
-            <button onClick={handleDownloadAll} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 transition-colors">
+            <button onClick={handleDownloadAll} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-green-500 text-white font-bold shadow-lg shadow-green-200 hover:bg-green-600 transition-colors">
               <Download size={20} /> Download All Files ({uploadedCount})
             </button>
           )}
         </div>
-
       </div>
     </div>
   )
