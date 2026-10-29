@@ -7,11 +7,13 @@ interface Student {
   lrn: string;
   first_name: string;
   last_name: string;
+  middle_name: string;
   section: string;
   status: string;
   field: string;
   course: string;
   deployment_area: string;
+  sex: string;
 }
 
 interface AttendanceRecord {
@@ -32,7 +34,6 @@ interface DiaryRecord {
   image_urls: string[];
 }
 
-// Bagong interface para sa Requirements
 interface RequirementRecord {
   id: string;
   file_name: string;
@@ -45,15 +46,20 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  
+  // Filter States
+  const [filterSection, setFilterSection] = useState('All')
+  const [filterSex, setFilterSex] = useState('All')
+
   const [activeTab, setActiveTab] = useState<'directory' | 'approvals'>('directory')
   
   // Modal States
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
-  const [modalTab, setModalTab] = useState<'attendance' | 'diary' | 'requirements'>('attendance') // Dinagdag ang 'requirements'
+  const [modalTab, setModalTab] = useState<'attendance' | 'diary' | 'requirements'>('attendance')
   
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([])
   const [diary, setDiary] = useState<DiaryRecord[]>([])
-  const [requirements, setRequirements] = useState<RequirementRecord[]>([]) // Bagong state
+  const [requirements, setRequirements] = useState<RequirementRecord[]>([])
   const [loadingRecords, setLoadingRecords] = useState(false)
   
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
@@ -75,22 +81,14 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   }, [])
 
   const handleApprove = async (lrn: string) => {
-    const { error } = await supabase
-      .from('students')
-      .update({ status: 'Approved' })
-      .eq('lrn', lrn)
-    
+    const { error } = await supabase.from('students').update({ status: 'Approved' }).eq('lrn', lrn)
     if (!error) fetchStudents()
     else alert("Error sa pag-approve: " + error.message)
   }
 
   const handleReject = async (lrn: string) => {
     if (!confirm("Sigurado ka bang gusto mong i-reject ito?")) return
-    const { error } = await supabase
-      .from('students')
-      .update({ status: 'Rejected' })
-      .eq('lrn', lrn)
-    
+    const { error } = await supabase.from('students').update({ status: 'Rejected' }).eq('lrn', lrn)
     if (!error) fetchStudents()
     else alert("Error sa pag-reject: " + error.message)
   }
@@ -98,26 +96,46 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const approvedStudents = students.filter(s => s.status === 'Approved')
   const pendingStudents = students.filter(s => s.status === 'Pending')
 
-  const filteredStudents = approvedStudents.filter(s => 
-    s.last_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    s.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.lrn.includes(searchTerm)
-  )
+  // --- FILTER LOGIC ---
+  const filteredStudents = approvedStudents.filter(s => {
+    const matchesSearch = s.last_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          s.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          s.lrn.includes(searchTerm);
+    const matchesSection = filterSection === 'All' || s.section === filterSection;
+    const matchesSex = filterSex === 'All' || s.sex === filterSex;
+    
+    return matchesSearch && matchesSection && matchesSex;
+  })
+
+  // --- EXPORT TO CSV FUNCTION ---
+  const handleExportStudents = () => {
+    let csvContent = "LRN,Last Name,First Name,Middle Name,Sex,Section,Field,Course,Deployment Area\n"
+    
+    filteredStudents.forEach(s => {
+      csvContent += `${s.lrn},"${s.last_name}","${s.first_name}","${s.middle_name || ''}",${s.sex},${s.section},${s.field},${s.course},${s.deployment_area}\n`
+    })
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement("a")
+    link.setAttribute("href", URL.createObjectURL(blob))
+    link.setAttribute("download", `StudentList_${filterSection}_${filterSex}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   const handleViewRecord = async (student: Student) => {
     setSelectedStudent(student)
     setModalTab('attendance')
     setLoadingRecords(true)
     
-    // Kunin ang Attendance
     const { data: attData } = await supabase.from('attendance').select('*').eq('lrn', student.lrn).order('date', { ascending: true })
     if (attData) setAttendance(attData)
 
-    // Kunin ang Diary
     const { data: diaryData } = await supabase.from('diary').select('*').eq('lrn', student.lrn).order('day_number', { ascending: true })
     if (diaryData) setDiary(diaryData)
 
-    // Kunin ang Requirements
     const { data: reqData } = await supabase.from('requirements').select('*').eq('lrn', student.lrn).order('uploaded_at', { ascending: false })
     if (reqData) setRequirements(reqData)
     
@@ -225,27 +243,71 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                <h2 className="font-bold text-gray-800">Student Directory</h2>
-                <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64" /></div>
+              
+              {/* TOOLBAR WITH FILTERS AND EXPORT */}
+              <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-64" />
+                  </div>
+                  
+                  <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
+                    <option value="All">All Sections</option>
+                    <option value="12 GAS">12 GAS</option>
+                    <option value="12 HUMSS">12 HUMSS</option>
+                  </select>
+
+                  <select value={filterSex} onChange={e => setFilterSex(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none">
+                    <option value="All">All Sex</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
+
+                <button onClick={handleExportStudents} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors">
+                  <Download size={16} /> Export List
+                </button>
               </div>
+              
               {loading ? <div className="p-8 text-center text-gray-500">Loading students...</div> : (
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-white border-b border-gray-200 text-gray-500">
-                    <tr><th className="px-6 py-3 font-medium">LRN</th><th className="px-6 py-3 font-medium">Name</th><th className="px-6 py-3 font-medium">Section</th><th className="px-6 py-3 font-medium">Field & Course</th><th className="px-6 py-3 font-medium text-right">Action</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredStudents.map(student => (
-                      <tr key={student.lrn} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 font-mono text-gray-600">{student.lrn}</td>
-                        <td className="px-6 py-4 font-medium text-gray-800">{student.last_name}, {student.first_name}</td>
-                        <td className="px-6 py-4"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{student.section}</span></td>
-                        <td className="px-6 py-4 text-gray-600 text-xs">{student.field} <br/> {student.course}</td>
-                        <td className="px-6 py-4 text-right"><button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-medium text-sm">View Record</button></td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-white border-b border-gray-200 text-gray-500">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">LRN</th>
+                        <th className="px-4 py-3 font-medium">Last Name</th>
+                        <th className="px-4 py-3 font-medium">First Name</th>
+                        <th className="px-4 py-3 font-medium">M.I.</th>
+                        <th className="px-4 py-3 font-medium">Sex</th>
+                        <th className="px-4 py-3 font-medium">Section</th>
+                        <th className="px-4 py-3 font-medium">Course</th>
+                        <th className="px-4 py-3 font-medium">Area</th>
+                        <th className="px-4 py-3 font-medium text-right">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredStudents.map(student => (
+                        <tr key={student.lrn} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 font-mono text-gray-600">{student.lrn}</td>
+                          <td className="px-4 py-3 font-medium text-gray-800">{student.last_name}</td>
+                          <td className="px-4 py-3 text-gray-800">{student.first_name}</td>
+                          <td className="px-4 py-3 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td>
+                          <td className="px-4 py-3 text-gray-600">{student.sex}</td>
+                          <td className="px-4 py-3"><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">{student.section}</span></td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{student.course}</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{student.deployment_area}</td>
+                          <td className="px-4 py-3 text-right">
+                            <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-medium text-sm">View Record</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredStudents.length === 0 && (
+                        <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">Walang nahanap na estudyante base sa filter.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </>
@@ -280,7 +342,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         )}
       </div>
 
-      {/* Student Modal */}
+      {/* Student Modal (Pareho pa rin, walang binago) */}
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
@@ -296,13 +358,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             <div className="flex border-b border-gray-100 px-6">
               <button onClick={() => setModalTab('attendance')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${modalTab === 'attendance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><CalendarCheck size={16} /> Attendance (DTR)</button>
               <button onClick={() => setModalTab('diary')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${modalTab === 'diary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><BookOpen size={16} /> Daily Diary</button>
-              {/* BAGONG TAB */}
               <button onClick={() => setModalTab('requirements')} className={`py-3 px-4 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${modalTab === 'requirements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><FileText size={16} /> Requirements</button>
             </div>
 
             <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
               {loadingRecords ? <div className="text-center py-10 text-gray-500">Loading records...</div> : modalTab === 'attendance' ? (
-                // ATTENDANCE TAB
                 attendance.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang attendance record.</div> : (
                   <>
                     <div className="mb-4 bg-white p-4 rounded-lg flex justify-between items-center shadow-sm border border-gray-200">
@@ -333,7 +393,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                   </>
                 )
               ) : modalTab === 'diary' ? (
-                // DIARY TAB
                 diary.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang diary entry.</div> : (
                   <div className="space-y-3">
                     {diary.map(entry => (
@@ -346,7 +405,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                   </div>
                 )
               ) : (
-                // REQUIREMENTS TAB (BAGO)
                 requirements.length === 0 ? <div className="text-center py-10 text-gray-500">Wala pang na-upload na requirements.</div> : (
                   <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                     <div className="divide-y divide-gray-100">
