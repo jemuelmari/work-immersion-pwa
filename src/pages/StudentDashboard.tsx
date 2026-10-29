@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Wifi, WifiOff, Clock, Camera, CheckCircle, RefreshCw, LogOut, BookOpen, FileText, Sun, Moon } from 'lucide-react'
+import { Wifi, WifiOff, Clock, Camera, CheckCircle, RefreshCw, LogOut, BookOpen, FileText, Sun, Moon, User } from 'lucide-react'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 
-export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { onOpenDiary: () => void; onOpenRequirements: () => void }) {
+export default function StudentDashboard({ onOpenDiary, onOpenRequirements, onOpenProfile }: { onOpenDiary: () => void; onOpenRequirements: () => void; onOpenProfile: () => void }) {
   const { user, logout } = useAuth()
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [time, setTime] = useState(new Date())
@@ -113,32 +113,18 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
     const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0')
 
     let payload: any = {
-      lrn: user?.id,
-      date: today,
+      lrn: user?.id, date: today,
       time_in_photo: todayRecord?.time_in_photo || null,
       time_out_photo: todayRecord?.time_out_photo || null
     }
-
     if (todayRecord) payload = { ...todayRecord, ...payload }
 
-    if (cameraMode === 'MORNING_IN') {
-      payload.morning_in = timeStr
-      payload.time_in_photo = photoUrl
-    } else if (cameraMode === 'MORNING_OUT') {
-      payload.morning_out = timeStr
-    } else if (cameraMode === 'AFTERNOON_IN') {
-      payload.afternoon_in = timeStr
-    } else if (cameraMode === 'AFTERNOON_OUT') {
-      payload.afternoon_out = timeStr
-      payload.time_out_photo = photoUrl
-    }
+    if (cameraMode === 'MORNING_IN') { payload.morning_in = timeStr; payload.time_in_photo = photoUrl } 
+    else if (cameraMode === 'MORNING_OUT') { payload.morning_out = timeStr } 
+    else if (cameraMode === 'AFTERNOON_IN') { payload.afternoon_in = timeStr } 
+    else if (cameraMode === 'AFTERNOON_OUT') { payload.afternoon_out = timeStr; payload.time_out_photo = photoUrl }
 
-    await db.syncQueue.add({
-      action: cameraMode,
-      payload: payload,
-      status: 'pending', createdAt: now.toISOString()
-    })
-    
+    await db.syncQueue.add({ action: cameraMode, payload: payload, status: 'pending', createdAt: now.toISOString() })
     setTodayRecord(payload)
     fetchTodayRecord()
   }
@@ -175,24 +161,20 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
           </div>
         )}
 
-        {!isOnline && <div className="bg-red-50/80 backdrop-blur-md text-red-700 p-3 rounded-2xl text-sm text-center border border-red-100 font-medium">Offline ka ngayon. Ang data ay awtomatikong ipapadala kapag may net na.</div>}
+        {!isOnline && <div className="bg-red-50/80 backdrop-blur-md text-red-700 p-3 rounded-2xl text-sm text-center border border-red-100 font-medium">Offline ka ngayon.</div>}
         {isSyncing && <div className="bg-blue-50/80 backdrop-blur-md text-blue-700 p-3 rounded-2xl text-sm flex items-center justify-center gap-2 border border-blue-100 font-medium"><RefreshCw className="animate-spin" size={16} /> Nag-sa-sync...</div>}
 
         <div className="glass-card p-6 rounded-3xl text-center">
           <div className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 tracking-tight mb-1">
             {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
           </div>
-          <div className="text-sm text-gray-500 mb-6 font-medium">
-            {time.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </div>
+          <div className="text-sm text-gray-500 mb-6 font-medium">{time.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
 
           {isCameraOpen ? (
             <div className="space-y-3">
               <div className="relative rounded-2xl overflow-hidden bg-black aspect-square w-full max-w-[280px] mx-auto shadow-lg">
                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                <div className="absolute top-2 left-2 bg-black/50 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium">
-                  {cameraMode.replace('_', ' ')}
-                </div>
+                <div className="absolute top-2 left-2 bg-black/50 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium">{cameraMode.replace('_', ' ')}</div>
               </div>
               <div className="flex gap-2">
                 <button onClick={stopCamera} className="flex-1 py-3 rounded-xl bg-gray-200/80 text-gray-700 font-bold hover:bg-gray-300/80 transition-colors">Cancel</button>
@@ -201,31 +183,11 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
             </div>
           ) : (
             <div className="space-y-3">
-              {currentState === 'MORNING_IN' && (
-                <button onClick={() => startCamera('MORNING_IN')} className="glass-button-primary w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 text-white">
-                  <Sun size={28} /><span className="font-bold text-lg">Morning Time In</span>
-                </button>
-              )}
-              {currentState === 'MORNING_OUT' && (
-                <button onClick={() => startCamera('MORNING_OUT')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-orange-400 to-orange-500 text-white font-bold shadow-lg shadow-orange-200 hover:from-orange-500 hover:to-orange-600 transition-all">
-                  <Sun size={28} /><span className="text-lg">Morning Time Out</span>
-                </button>
-              )}
-              {currentState === 'AFTERNOON_IN' && (
-                <button onClick={() => startCamera('AFTERNOON_IN')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-blue-400 to-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:from-blue-500 hover:to-blue-700 transition-all">
-                  <Moon size={28} /><span className="text-lg">Afternoon Time In</span>
-                </button>
-              )}
-              {currentState === 'AFTERNOON_OUT' && (
-                <button onClick={() => startCamera('AFTERNOON_OUT')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-indigo-400 to-indigo-600 text-white font-bold shadow-lg shadow-indigo-200 hover:from-indigo-500 hover:to-indigo-700 transition-all">
-                  <Moon size={28} /><span className="text-lg">Afternoon Time Out</span>
-                </button>
-              )}
-              {currentState === 'COMPLETED' && (
-                <div className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gray-100/50 text-gray-400 border border-gray-200">
-                  <CheckCircle size={28} /><span className="font-bold text-lg">Completed for today!</span>
-                </div>
-              )}
+              {currentState === 'MORNING_IN' && <button onClick={() => startCamera('MORNING_IN')} className="glass-button-primary w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 text-white"><Sun size={28} /><span className="font-bold text-lg">Morning Time In</span></button>}
+              {currentState === 'MORNING_OUT' && <button onClick={() => startCamera('MORNING_OUT')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-orange-400 to-orange-500 text-white font-bold shadow-lg shadow-orange-200 hover:from-orange-500 hover:to-orange-600 transition-all"><Sun size={28} /><span className="text-lg">Morning Time Out</span></button>}
+              {currentState === 'AFTERNOON_IN' && <button onClick={() => startCamera('AFTERNOON_IN')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-blue-400 to-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:from-blue-500 hover:to-blue-700 transition-all"><Moon size={28} /><span className="text-lg">Afternoon Time In</span></button>}
+              {currentState === 'AFTERNOON_OUT' && <button onClick={() => startCamera('AFTERNOON_OUT')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-indigo-400 to-indigo-600 text-white font-bold shadow-lg shadow-indigo-200 hover:from-indigo-500 hover:to-indigo-700 transition-all"><Moon size={28} /><span className="text-lg">Afternoon Time Out</span></button>}
+              {currentState === 'COMPLETED' && <div className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gray-100/50 text-gray-400 border border-gray-200"><CheckCircle size={28} /><span className="font-bold text-lg">Completed for today!</span></div>}
             </div>
           )}
         </div>
@@ -240,6 +202,12 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
             <span className="font-bold text-sm text-gray-700">Requirements</span>
           </button>
         </div>
+
+        {/* BAGONG BUTTON PARA SA PROFILE */}
+        <button onClick={onOpenProfile} className="glass-card w-full p-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/90 transition-colors">
+          <div className="bg-orange-100 text-orange-600 p-2 rounded-xl"><User size={24} /></div>
+          <span className="font-bold text-sm text-gray-700">My Profile</span>
+        </button>
 
         {pendingSyncs > 0 && (
           <div className="glass-card p-4 rounded-2xl flex items-center justify-between text-yellow-800 text-sm">
