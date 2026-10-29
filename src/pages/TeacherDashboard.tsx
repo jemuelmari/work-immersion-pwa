@@ -67,8 +67,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [loadingRecords, setLoadingRecords] = useState(false)
   
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
-  
-  // States para sa Diary Modal at Grading
   const [selectedDiaryEntry, setSelectedDiaryEntry] = useState<DiaryRecord | null>(null)
   const [isViewingDiary, setIsViewingDiary] = useState(false)
   const [isGradingModalOpen, setIsGradingModalOpen] = useState(false)
@@ -207,7 +205,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     document.body.removeChild(link)
   }
 
-  // === DIARY VIEW AT GRADING FUNCTIONS ===
   const openDiaryView = (entry: DiaryRecord) => {
     setSelectedDiaryEntry(entry)
     setIsViewingDiary(true)
@@ -221,6 +218,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setIsGradingModalOpen(true)
   }
 
+  // === AYOS NA ANG GRADING LOGIC ===
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
     setSavingGrades(true)
@@ -232,6 +230,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         totalScore += score
       })
 
+      // 1. Save individual rubric scores
       for (const cat of RUBRIC_CATEGORIES) {
         const scoreValue = parseFloat(gradingScores[cat.id] || '0')
         await supabase.from('diary_scores').upsert({
@@ -241,12 +240,18 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         }, { onConflict: 'diary_id,criteria' })
       }
 
-      await supabase.from('diary').update({
-        rubric_score: totalScore,
-        teacher_feedback: feedback
-      }).eq('id', selectedDiaryEntry.id)
+      // 2. I-UPDATE TALAGA ANG DIARY TABLE (imbes na upsert na nag-fa-fail)
+      const { error: updateError } = await supabase
+        .from('diary')
+        .update({
+          rubric_score: totalScore,
+          teacher_feedback: feedback
+        })
+        .eq('id', selectedDiaryEntry.id)
 
-      // IDINAGDAG: I-refresh ang diary list para lumabas ang bagong score
+      if (updateError) throw updateError
+
+      // 3. I-refresh ang diary list para lumabas agad ang bagong score
       if (selectedStudent) {
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
         if (data) setDiary(data)
