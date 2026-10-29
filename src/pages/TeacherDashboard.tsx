@@ -152,18 +152,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setLoadingRecords(false)
   }
 
-  // --- RESET ATTENDANCE FUNCTION ---
   const handleResetAttendance = async (recordId: string) => {
     if (!confirm("Sigurado ka bang gusto mong i-reset ang attendance record na ito? Mabubura lahat ng oras (AM/PM).")) return
-    
     const { error } = await supabase.from('attendance').delete().eq('id', recordId)
     if (!error) {
-      // I-update ang local state para mawala agad
       setAttendance(attendance.filter(a => a.id !== recordId))
       alert("Na-reset na ang attendance record.")
-    } else {
-      alert("Error sa pag-reset: " + error.message)
-    }
+    } else { alert("Error sa pag-reset: " + error.message) }
   }
 
   const calculateTotalHours = () => {
@@ -222,7 +217,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
           <button onClick={onOpenAnnouncements} className="glass-card px-5 py-3 rounded-2xl flex items-center gap-2 font-bold text-gray-700 hover:bg-white/90 transition-colors"><BookOpen size={18} className="text-blue-600" /> Announcements</button>
         </div>
 
-        {/* DIRECTORY TAB */}
         {activeTab === 'directory' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -299,7 +293,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
           </>
         )}
 
-        {/* APPROVALS TAB */}
         {activeTab === 'approvals' && (
           <div className="space-y-6">
             <div className="glass-card rounded-3xl overflow-hidden">
@@ -356,7 +349,6 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         )}
       </div>
 
-      {/* STUDENT MODAL */}
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="glass-card rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
