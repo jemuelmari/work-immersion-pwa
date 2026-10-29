@@ -75,32 +75,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [feedback, setFeedback] = useState('')
   const [savingGrades, setSavingGrades] = useState(false)
 
-  // Rubric Categories WITH DESCRIPTIONS
   const RUBRIC_CATEGORIES = [
-    { 
-      id: 'content', 
-      name: 'Content & Substance', 
-      max: 30,
-      description: 'Detalye ng karanasan, mga natutunan, at mga gawain sa araw na iyon.'
-    },
-    { 
-      id: 'organization', 
-      name: 'Organization & Clarity', 
-      max: 20,
-      description: 'Maayos ba ang daloy ng kwento? Madaling maintindihan ang mga pangyayari?'
-    },
-    { 
-      id: 'reflection', 
-      name: 'Depth of Reflection', 
-      max: 30,
-      description: 'May malalim bang pagninilay (realizations) sa mga nangyari? Ano ang natutunan mo?'
-    },
-    { 
-      id: 'mechanics', 
-      name: 'Grammar & Mechanics', 
-      max: 20,
-      description: 'Wastong baybay, bantas, at paggamit ng salita.'
-    },
+    { id: 'content', name: 'Content & Substance', max: 30, description: 'Detalye ng karanasan, mga natutunan, at mga gawain sa araw na iyon.' },
+    { id: 'organization', name: 'Organization & Clarity', max: 20, description: 'Maayos ba ang daloy ng kwento? Madaling maintindihan ang mga pangyayari?' },
+    { id: 'reflection', name: 'Depth of Reflection', max: 30, description: 'May malalim bang pagninilay (realizations) sa mga nangyari? Ano ang natutunan mo?' },
+    { id: 'mechanics', name: 'Grammar & Mechanics', max: 20, description: 'Wastong baybay, bantas, at paggamit ng salita.' },
   ]
 
   const fetchStudents = async () => {
@@ -234,6 +213,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setIsGradingModalOpen(true)
   }
 
+  // === FIX DITO: I-refresh ang diary list pagkatapos mag-save ===
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
     setSavingGrades(true)
@@ -259,6 +239,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         teacher_feedback: feedback
       }).eq('id', selectedDiaryEntry.id)
 
+      // IDINAGDAG: I-refresh ang diary list para lumabas ang bagong score
       if (selectedStudent) {
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
         if (data) setDiary(data)
