@@ -126,76 +126,109 @@ export default function StudentDashboard({ onOpenDiary, onOpenRequirements }: { 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-white p-4 shadow-sm flex justify-between items-center sticky top-0 z-10">
+    <div className="min-h-screen pb-20">
+      {/* HEADER */}
+      <div className="glass-panel p-4 sticky top-0 z-10 flex justify-between items-center">
         <div>
-          <h1 className="font-bold text-gray-800">Hello, {user?.name.split(' ')[0]}!</h1>
-          <p className="text-xs text-gray-500">{user?.section}</p>
+          <h1 className="font-bold text-gray-800 text-lg">Hello, {user?.name.split(' ')[0]}!</h1>
+          <p className="text-xs text-gray-500 font-medium">{user?.section}</p>
         </div>
-        <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+        <div className={`flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full ${isOnline ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
           {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
           {isOnline ? 'Online' : 'Offline'}
         </div>
       </div>
 
-      <div className="p-4 max-w-md mx-auto space-y-4">
+      <div className="p-4 max-w-md mx-auto space-y-4 mt-2">
+        {/* ANNOUNCEMENT */}
         {announcement && (
-          <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-blue-800 text-sm">
-            <h3 className="font-bold mb-1">📢 {announcement.title}</h3>
-            <p>{announcement.body}</p>
+          <div className="glass-card p-4 rounded-2xl text-blue-800 text-sm border-l-4 border-l-blue-500">
+            <h3 className="font-bold mb-1 flex items-center gap-1">📢 {announcement.title}</h3>
+            <p className="text-blue-900/80">{announcement.body}</p>
           </div>
         )}
 
-        {!isOnline && <div className="bg-red-50 text-red-700 p-3 rounded-xl text-sm text-center border border-red-100">Offline ka ngayon.</div>}
-        {isSyncing && <div className="bg-blue-50 text-blue-700 p-3 rounded-xl text-sm flex items-center justify-center gap-2 border border-blue-100"><RefreshCw className="animate-spin" size={16} /> Nag-sa-sync...</div>}
+        {/* ALERTS */}
+        {!isOnline && <div className="bg-red-50/80 backdrop-blur-md text-red-700 p-3 rounded-2xl text-sm text-center border border-red-100 font-medium">Offline ka ngayon. Ang data ay awtomatikong ipapadala kapag may net na.</div>}
+        {isSyncing && <div className="bg-blue-50/80 backdrop-blur-md text-blue-700 p-3 rounded-2xl text-sm flex items-center justify-center gap-2 border border-blue-100 font-medium"><RefreshCw className="animate-spin" size={16} /> Nag-sa-sync...</div>}
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm text-center border border-gray-100">
-          <div className="text-4xl font-bold text-gray-800 tracking-tight mb-1">{time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
-          <div className="text-sm text-gray-500 mb-6">{time.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+        {/* TIME IN / OUT CARD */}
+        <div className="glass-card p-6 rounded-3xl text-center">
+          <div className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 tracking-tight mb-1">
+            {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+          <div className="text-sm text-gray-500 mb-6 font-medium">
+            {time.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </div>
 
           {isCameraOpen ? (
             <div className="space-y-3">
-              <div className="relative rounded-xl overflow-hidden bg-black aspect-square w-full max-w-[300px] mx-auto">
+              <div className="relative rounded-2xl overflow-hidden bg-black aspect-square w-full max-w-[280px] mx-auto shadow-lg">
                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded">{cameraMode === 'TIME_IN' ? 'Time In' : 'Time Out'}</div>
+                <div className="absolute top-2 left-2 bg-black/50 backdrop-blur-md text-white text-xs px-2 py-1 rounded-md font-medium">{cameraMode === 'TIME_IN' ? 'Time In' : 'Time Out'}</div>
               </div>
               <div className="flex gap-2">
-                <button onClick={stopCamera} className="flex-1 py-3 rounded-xl bg-gray-200 text-gray-700 font-bold">Cancel</button>
-                <button onClick={captureImage} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold">Capture</button>
+                <button onClick={stopCamera} className="flex-1 py-3 rounded-xl bg-gray-200/80 text-gray-700 font-bold hover:bg-gray-300/80 transition-colors">Cancel</button>
+                <button onClick={captureImage} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors">Capture</button>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
               {!hasTimedIn && (
-                <button onClick={() => startCamera('TIME_IN')} className="w-full py-4 rounded-xl flex flex-col items-center justify-center gap-2 bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"><Camera size={28} /><span className="font-bold text-lg">Time In Now</span></button>
+                <button onClick={() => startCamera('TIME_IN')} className="glass-button-primary w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 text-white">
+                  <Camera size={28} />
+                  <span className="font-bold text-lg">Time In Now</span>
+                </button>
               )}
               {hasTimedIn && !hasTimedOut && (
-                <button onClick={() => startCamera('TIME_OUT')} className="w-full py-4 rounded-xl flex flex-col items-center justify-center gap-2 bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-200 transition-all"><LogOut size={28} /><span className="font-bold text-lg">Time Out Now</span></button>
+                <button onClick={() => startCamera('TIME_OUT')} className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gradient-to-r from-orange-400 to-orange-500 text-white font-bold shadow-lg shadow-orange-200 hover:from-orange-500 hover:to-orange-600 transition-all">
+                  <LogOut size={28} />
+                  <span className="text-lg">Time Out Now</span>
+                </button>
               )}
               {hasTimedIn && hasTimedOut && (
-                <div className="w-full py-4 rounded-xl flex flex-col items-center justify-center gap-2 bg-gray-100 text-gray-400"><CheckCircle size={28} /><span className="font-bold text-lg">Completed for today!</span></div>
+                <div className="w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gray-100/50 text-gray-400 border border-gray-200">
+                  <CheckCircle size={28} />
+                  <span className="font-bold text-lg">Completed for today!</span>
+                </div>
               )}
             </div>
           )}
         </div>
 
-        <button onClick={onOpenDiary} className="w-full bg-white border border-gray-200 text-gray-700 font-bold py-4 rounded-xl shadow-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
-          <BookOpen size={20} className="text-blue-600" /> My Daily Diary
-        </button>
+        {/* QUICK LINKS */}
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={onOpenDiary} className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-white/90 transition-colors">
+            <div className="bg-blue-100 text-blue-600 p-2 rounded-xl">
+              <BookOpen size={24} />
+            </div>
+            <span className="font-bold text-sm text-gray-700">My Diary</span>
+          </button>
 
-        {/* BAGONG BUTTON PARA SA REQUIREMENTS */}
-        <button onClick={onOpenRequirements} className="w-full bg-white border border-gray-200 text-gray-700 font-bold py-4 rounded-xl shadow-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
-          <FileText size={20} className="text-blue-600" /> My Requirements
-        </button>
+          <button onClick={onOpenRequirements} className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:bg-white/90 transition-colors">
+            <div className="bg-green-100 text-green-600 p-2 rounded-xl">
+              <FileText size={24} />
+            </div>
+            <span className="font-bold text-sm text-gray-700">Requirements</span>
+          </button>
+        </div>
 
+        {/* PENDING SYNC ALERT */}
         {pendingSyncs > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl flex items-center justify-between text-yellow-800 text-sm">
-            <div className="flex items-center gap-3"><Clock size={20} className="shrink-0" /><p>May <strong>{pendingSyncs}</strong> kang pending.</p></div>
-            <button onClick={syncData} disabled={!isOnline || isSyncing} className="bg-yellow-200 hover:bg-yellow-300 text-yellow-900 px-3 py-1.5 rounded-lg font-medium text-xs transition-colors disabled:opacity-50">Sync Now</button>
+          <div className="glass-card p-4 rounded-2xl flex items-center justify-between text-yellow-800 text-sm">
+            <div className="flex items-center gap-3">
+              <Clock size={20} className="shrink-0 text-yellow-600" />
+              <p>May <strong>{pendingSyncs}</strong> kang pending.</p>
+            </div>
+            <button onClick={syncData} disabled={!isOnline || isSyncing} className="bg-yellow-200/80 hover:bg-yellow-300 text-yellow-900 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors disabled:opacity-50 backdrop-blur-sm">
+              Sync Now
+            </button>
           </div>
         )}
 
-        <button onClick={logout} className="w-full text-red-500 text-sm font-medium py-2">Logout</button>
+        <button onClick={logout} className="w-full text-red-500/80 text-sm font-bold py-3 hover:text-red-600 transition-colors">
+          Logout
+        </button>
       </div>
       <canvas ref={canvasRef} className="hidden" />
     </div>
