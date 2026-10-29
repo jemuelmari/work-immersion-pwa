@@ -20,15 +20,28 @@ const FIELD_TO_AREAS: Record<string, string[]> = {
 
 const SCHOOLS = ['Sta. Cruz Elementary School', 'Iba Elementary School', 'San Jose National High School', 'Other School']
 
+// Function para i-normalize ang pangalan (Capitalize each word)
+const normalizeName = (str: string) => {
+  return str.trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())
+}
+
 export default function Register({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   
   const [formData, setFormData] = useState({
-    lrn: '', firstName: '', lastName: '', middleName: '',
-    section: '12 GAS', course: 'Nursing', field: 'Health',
-    deploymentArea: 'RHU San Jose', schoolName: '', password: ''
+    lrn: '',
+    firstName: '',
+    lastName: '',
+    middleName: '',
+    sex: 'Male', // Bagong field
+    section: '12 GAS',
+    course: 'Nursing',
+    field: 'Health',
+    deploymentArea: 'RHU San Jose',
+    schoolName: '',
+    password: ''
   })
 
   useEffect(() => {
@@ -56,11 +69,24 @@ export default function Register({ onBack }: { onBack: () => void }) {
       })
       if (authError) throw new Error('Auth Error: ' + authError.message)
 
+      // Auto-capitalize ang names bago i-save
+      const normalizedLastName = normalizeName(formData.lastName)
+      const normalizedFirstName = normalizeName(formData.firstName)
+      const normalizedMiddleName = normalizeName(formData.middleName)
+
       const { error: dbError } = await supabase.from('students').insert({
-        lrn: formData.lrn, first_name: formData.firstName, last_name: formData.lastName,
-        middle_name: formData.middleName, section: formData.section, field: formData.field,
-        course: formData.course, deployment_area: formData.deploymentArea || formData.schoolName,
-        password_hash: formData.password, status: 'Pending', is_first_login: true
+        lrn: formData.lrn, 
+        first_name: normalizedFirstName, 
+        last_name: normalizedLastName,
+        middle_name: normalizedMiddleName, 
+        sex: formData.sex, // Bagong field
+        section: formData.section, 
+        field: formData.field,
+        course: formData.course, 
+        deployment_area: formData.deploymentArea || formData.schoolName,
+        password_hash: formData.password, 
+        status: 'Pending', 
+        is_first_login: true
       })
       if (dbError) throw new Error('DB Error: ' + dbError.message)
 
@@ -113,9 +139,18 @@ export default function Register({ onBack }: { onBack: () => void }) {
             </div>
           </div>
           
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
-            <input type="text" value={formData.middleName} onChange={e => setFormData({...formData, middleName: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+              <input type="text" value={formData.middleName} onChange={e => setFormData({...formData, middleName: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Sex</label>
+              <select value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none appearance-none">
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
