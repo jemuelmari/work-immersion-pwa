@@ -8,6 +8,7 @@ interface AuthUser {
   role: UserRole;
   name: string;
   section?: string;
+  isFirstLogin?: boolean; // IDINAGDAG
 }
 
 interface AuthContextType {
@@ -73,7 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: studentData.lrn, 
           role: 'Student' as UserRole, 
           name: `${studentData.first_name} ${studentData.last_name}`,
-          section: studentData.section
+          section: studentData.section,
+          isFirstLogin: studentData.is_first_login // IDINAGDAG
         }
         setUser(newUser)
         localStorage.setItem('wi_user', JSON.stringify(newUser))
