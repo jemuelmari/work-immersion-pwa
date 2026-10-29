@@ -24,38 +24,23 @@ function AppContent() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
   
-  // Kung wala pang naka-login
   if (!user) {
-    if (currentPage === 'register') {
-      return <Register onBack={() => setCurrentPage('dashboard')} />
-    }
-    // IPINAPASA ANG onGoToRegister
+    if (currentPage === 'register') return <Register onBack={() => setCurrentPage('dashboard')} />
     return <Login onGoToRegister={() => setCurrentPage('register')} />
   }
 
-  if (currentPage === 'change-password') {
-    return <ChangePassword onComplete={() => setCurrentPage('dashboard')} />
-  }
+  if (currentPage === 'change-password') return <ChangePassword onComplete={() => setCurrentPage('dashboard')} />
 
-  // Student Pages
   if (user.role === 'Student') {
     if (currentPage === 'diary') return <StudentDiary onBack={() => setCurrentPage('dashboard')} />
     if (currentPage === 'requirements') return <StudentRequirements onBack={() => setCurrentPage('dashboard')} />
-    
-    return <StudentDashboard 
-      onOpenDiary={() => setCurrentPage('diary')} 
-      onOpenRequirements={() => setCurrentPage('requirements')}
-    />
+    return <StudentDashboard onOpenDiary={() => setCurrentPage('diary')} onOpenRequirements={() => setCurrentPage('requirements')} />
   }
 
-  // Teacher Pages
   if (currentPage === 'scores') return <TeacherScores onBack={() => setCurrentPage('dashboard')} />
   if (currentPage === 'announcements') return <TeacherAnnouncements onBack={() => setCurrentPage('dashboard')} />
   
-  return <TeacherDashboard 
-    onOpenScores={() => setCurrentPage('scores')} 
-    onOpenAnnouncements={() => setCurrentPage('announcements')}
-  />
+  return <TeacherDashboard onOpenScores={() => setCurrentPage('scores')} onOpenAnnouncements={() => setCurrentPage('announcements')} />
 }
 
 function App() {
