@@ -564,23 +564,23 @@ revoke execute on function public.handle_new_auth_user() from public, anon, auth
 
 
 -- ---------------------------------------------------------------------
--- 7. STORAGE: gawing PRIVATE ang lahat ng bucket
---    (signed URLs na ang ginagamit ng app; gumagana pa rin ang lumang files)
+-- 7. STORAGE: PUBLIC ang mga bucket (napagpasyahan, para madaling mabuksan ng teacher).
+--    Ang upload/palit/bura ay limitado pa rin sa sariling folder ng estudyante.
 -- ---------------------------------------------------------------------
 update storage.buckets
-   set public = false,
+   set public = true,   -- kailangang makita/ma-download/ma-print ng teacher
        file_size_limit = 2097152,                                -- 2 MB
        allowed_mime_types = array['image/jpeg']
  where id = 'attendance_photos';
 
 update storage.buckets
-   set public = false,
+   set public = true,   -- kailangang makita/ma-download/ma-print ng teacher
        file_size_limit = 5242880,                                -- 5 MB
        allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']
  where id = 'diary_images';
 
 update storage.buckets
-   set public = false,
+   set public = true,   -- kailangang makita/ma-download/ma-print ng teacher
        file_size_limit = 5242880,                                -- 5 MB
        allowed_mime_types = array['application/pdf']
  where id = 'requirements_files';

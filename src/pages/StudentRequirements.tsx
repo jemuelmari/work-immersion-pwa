@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/db'
 import { REQUIRED_DOCS } from '../lib/constants'
-import { openFile, downloadMany, safeFilePart } from '../lib/files'
+import { openFile, downloadMany, safeFilePart, getFileUrlMap } from '../lib/files'
 import { uploadRequirement, syncRequirementFiles, SYNC_EVENT } from '../lib/sync'
 import { Upload, FileText, ArrowLeft, Loader2, CheckCircle, XCircle, Download, Clock } from 'lucide-react'
 
@@ -21,6 +21,7 @@ export default function StudentRequirements({ onBack }: { onBack: () => void }) 
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [links, setLinks] = useState<Record<string, string>>({})
 
   const fetchRequirements = useCallback(async () => {
     if (!user?.id) return
@@ -42,6 +43,7 @@ export default function StudentRequirements({ onBack }: { onBack: () => void }) 
       }
     }))
     setLoading(false)
+    if (data) getFileUrlMap('requirements_files', data, (d: any) => d.requirement_name, (d: any) => d.file_url).then(setLinks)
   }, [user?.id])
 
   useEffect(() => { fetchRequirements() }, [fetchRequirements])
@@ -146,9 +148,9 @@ export default function StudentRequirements({ onBack }: { onBack: () => void }) 
                     <div>
                       <p className={`text-sm font-semibold ${req.status === 'Missing' ? 'text-gray-500' : 'text-gray-800'}`}>{req.name}</p>
                       {req.status === 'Uploaded' && (
-                        <button onClick={() => openFile('requirements_files', req.file_url)} className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1 mt-1">
-                          <FileText size={12} /> View Uploaded PDF
-                        </button>
+                        links[req.name]
+                          ? <a href={links[req.name]} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1 mt-1"><FileText size={12} /> View Uploaded PDF</a>
+                          : <button onClick={() => openFile('requirements_files', req.file_url)} className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1 mt-1"><FileText size={12} /> View Uploaded PDF</button>
                       )}
                       {req.status === 'Queued' && <p className="text-xs text-yellow-700 mt-1">Naka-save sa device, ipapadala kapag may internet</p>}
                     </div>

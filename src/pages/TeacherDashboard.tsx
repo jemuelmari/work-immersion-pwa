@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock, KeyRound, Edit } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock, KeyRound, Edit, Printer, ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { RUBRIC_CATEGORIES, SECTIONS, normalizeName } from '../lib/constants'
 import { downloadCsv } from '../lib/csv'
-import { getFileUrl, getFileUrls, openFile, downloadMany, safeFilePart } from '../lib/files'
+import { getFileUrl, getFileUrls, getFileUrlMap, openFile, downloadFile, downloadMany, printFile, safeFilePart } from '../lib/files'
 
 interface Student { lrn: string; first_name: string; last_name: string; middle_name: string; section: string; status: string; field: string; course: string; deployment_area: string; sex: string; }
 interface AttendanceRecord { id: string; date: string; time_in: string; time_out: string; morning_in: string; morning_out: string; afternoon_in: string; afternoon_out: string; total_hours: number; time_in_photo: string; time_out_photo: string; }
@@ -34,6 +34,8 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [diaryImageUrls, setDiaryImageUrls] = useState<string[]>([])
   const [downloadingReqs, setDownloadingReqs] = useState(false)
+  const [reqLinks, setReqLinks] = useState<Record<string, string>>({})
+  const [busyReqId, setBusyReqId] = useState<string | null>(null)
   const isAdmin = user?.role === 'Admin'
   const [selectedDiaryEntry, setSelectedDiaryEntry] = useState<DiaryRecord | null>(null)
   const [isViewingDiary, setIsViewingDiary] = useState(false)
@@ -194,7 +196,10 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     setAttendance(att.data ?? [])
     setDiary(dia.data ?? [])
     setRequirements(req.data ?? [])
+    setReqLinks({})
     setLoadingRecords(false)
+    // Ihanda ang mga link ng PDF para diretsong mabuksan
+    getFileUrlMap('requirements_files', req.data ?? [], (r: any) => r.id, (r: any) => r.file_url).then(setReqLinks)
   }
 
   const viewPhoto = async (value: string) => {
@@ -203,13 +208,30 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     else alert('Hindi mabuksan ang litrato.')
   }
 
+  const reqFileName = (req: RequirementRecord) =>
+    selectedStudent
+      ? `${selectedStudent.lrn}_${safeFilePart(selectedStudent.last_name)}_${safeFilePart(selectedStudent.first_name)}_${safeFilePart(req.requirement_name) || 'Document'}.pdf`
+      : `${safeFilePart(req.requirement_name) || 'Document'}.pdf`
+
+  const handleReqAction = async (req: RequirementRecord, action: 'download' | 'print') => {
+    setBusyReqId(req.id)
+    try {
+      if (action === 'download') await downloadFile('requirements_files', req.file_url, reqFileName(req))
+      else await printFile('requirements_files', req.file_url, req.requirement_name)
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setBusyReqId(null)
+    }
+  }
+
   const handleDownloadAllReqs = async () => {
     if (!selectedStudent) return
     setDownloadingReqs(true)
     await downloadMany(requirements.map(req => ({
       bucket: 'requirements_files' as const,
       value: req.file_url,
-      fileName: `${selectedStudent.lrn}_${safeFilePart(selectedStudent.last_name)}_${safeFilePart(selectedStudent.first_name)}_${safeFilePart(req.requirement_name) || 'Document'}.pdf`,
+      fileName: reqFileName(req),
     })))
     setDownloadingReqs(false)
   }
@@ -591,7 +613,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                       {requirements.map(req => (
                         <div key={req.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors">
                           <div className="flex items-center gap-3"><div className="bg-blue-100 p-2 rounded-lg text-blue-600"><FileText size={20} /></div><div><p className="font-bold text-sm text-gray-800">{req.requirement_name}</p><p className="text-xs text-gray-500 font-medium">{req.file_name} • {new Date(req.uploaded_at).toLocaleDateString()}</p></div></div>
-                          <button onClick={() => openFile('requirements_files', req.file_url)} className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">View</button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {reqLinks[req.id]
+                              ? <a href={reqLinks[req.id]} target="_blank" rel="noopener noreferrer" title="View" className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"><ExternalLink size={14} /> View</a>
+                              : <button onClick={() => openFile('requirements_files', req.file_url)} className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">View</button>}
+                            <button onClick={() => handleReqAction(req, 'download')} disabled={busyReqId === req.id} title="Download" className="text-green-700 bg-green-50 hover:bg-green-100 p-2 rounded-lg transition-colors disabled:opacity-50"><Download size={16} /></button>
+                            <button onClick={() => handleReqAction(req, 'print')} disabled={busyReqId === req.id} title="Print" className="text-gray-700 bg-gray-100 hover:bg-gray-200 p-2 rounded-lg transition-colors disabled:opacity-50"><Printer size={16} /></button>
+                          </div>
                         </div>
                       ))}
                     </div>

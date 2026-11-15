@@ -18,15 +18,23 @@ export function toStoragePath(bucket: Bucket, value: string | null | undefined):
   return value
 }
 
-/** Gumagawa ng pansamantalang link (1 oras) para makita ang private file. */
+export let lastFileError = ''
+
+/**
+ * Link para makita ang file.
+ * 1) Signed link (gumagana kahit private ang bucket)
+ * 2) Kung pumalpak, public link (gumagana kapag public ang bucket)
+ */
 export async function getFileUrl(bucket: Bucket, value: string | null | undefined): Promise<string | null> {
   if (!value) return null
   if (value.startsWith('data:') || value.startsWith('blob:')) return value // lumang offline photo
   const path = toStoragePath(bucket, value)
-  if (!path) return null
+  if (!path) return value.startsWith('http') ? value : null
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60)
-  if (error || !data) return null
-  return data.signedUrl
+  if (data?.signedUrl) return data.signedUrl
+  lastFileError = error?.message || 'unknown error'
+  console.warn(`Signed URL failed for ${bucket}/${path}:`, lastFileError)
+  return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl
 }
 
 export async function getFileUrls(bucket: Bucket, values: (string | null | undefined)[]): Promise<string[]> {
@@ -34,26 +42,32 @@ export async function getFileUrls(bucket: Bucket, values: (string | null | undef
   return urls.filter((u): u is string => !!u)
 }
 
-/** Binubuksan ang file sa bagong tab. Binubuksan muna ang tab para hindi ma-block ng popup blocker. */
+/** Ginagawa nang maaga ang mga link para normal na <a href> ang View (hindi naba-block sa cellphone). */
+export async function getFileUrlMap<T>(bucket: Bucket, items: T[], key: (item: T) => string, value: (item: T) => string | null | undefined) {
+  const entries = await Promise.all(items.map(async item => [key(item), await getFileUrl(bucket, value(item))] as const))
+  const map: Record<string, string> = {}
+  for (const [k, url] of entries) if (url) map[k] = url
+  return map
+}
+
+/** Binubuksan ang file sa bagong tab (pang-fallback kapag wala pang naka-handang link). */
 export async function openFile(bucket: Bucket, value: string | null | undefined) {
-  const win = window.open('', '_blank')
   const url = await getFileUrl(bucket, value)
-  if (!url) {
-    win?.close()
-    alert('Hindi mabuksan ang file. Baka nabura na ito o walang internet.')
-    return
-  }
-  if (win) win.location.href = url
-  else window.location.href = url
+  if (!url) { alert('Hindi mabuksan ang file. ' + lastFileError); return }
+  if (!window.open(url, '_blank')) window.location.assign(url)
+}
+
+async function fetchFileBlob(bucket: Bucket, value: string | null | undefined, label: string) {
+  const url = await getFileUrl(bucket, value)
+  if (!url) throw new Error('Walang link para sa ' + label)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Hindi makuha ang ${label} (${res.status}). ${lastFileError}`)
+  return res.blob()
 }
 
 /** Dina-download ang file gamit ang tamang filename (gumagana kahit ibang domain ang storage). */
 export async function downloadFile(bucket: Bucket, value: string | null | undefined, fileName: string) {
-  const url = await getFileUrl(bucket, value)
-  if (!url) throw new Error('Walang link para sa ' + fileName)
-  const res = await fetch(url)
-  if (!res.ok) throw new Error('Hindi ma-download ang ' + fileName)
-  const blob = await res.blob()
+  const blob = await fetchFileBlob(bucket, value, fileName)
   const objectUrl = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = objectUrl
@@ -61,7 +75,30 @@ export async function downloadFile(bucket: Bucket, value: string | null | undefi
   document.body.appendChild(a)
   a.click()
   a.remove()
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+}
+
+/** Diretsong print sa computer. Sa cellphone, binubuksan ang PDF para doon i-print/i-share. */
+export async function printFile(bucket: Bucket, value: string | null | undefined, label: string) {
+  const blob = await fetchFileBlob(bucket, value, label)
+  const objectUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
+  if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    if (!window.open(objectUrl, '_blank')) window.location.assign(objectUrl)
+    return
+  }
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+  iframe.src = objectUrl
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.focus()
+      iframe.contentWindow?.print()
+    } catch {
+      window.open(objectUrl, '_blank')
+    }
+    setTimeout(() => { iframe.remove(); URL.revokeObjectURL(objectUrl) }, 60_000)
+  }
+  document.body.appendChild(iframe)
 }
 
 /** Sunod-sunod na download (may pagitan para hindi i-block ng browser). */
