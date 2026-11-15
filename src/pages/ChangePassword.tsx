@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Loader2, Lock } from 'lucide-react'
 
 export default function ChangePassword({ onComplete }: { onComplete: () => void }) {
-  const { user, logout } = useAuth()
+  const { user, logout, updateUser } = useAuth()
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,16 +19,10 @@ export default function ChangePassword({ onComplete }: { onComplete: () => void 
     try {
       const { error: authError } = await supabase.auth.updateUser({ password: newPassword })
       if (authError) throw authError
-      const { error: dbError } = await supabase.from('students').update({ password_hash: newPassword, is_first_login: false }).eq('lrn', user?.id)
+      const { error: dbError } = await supabase.from('students').update({ is_first_login: false }).eq('lrn', user?.id)
       if (dbError) throw dbError
-      
-      const savedUser = localStorage.getItem('wi_user')
-      if (savedUser) {
-        const parsedUser = JSON.parse(savedUser)
-        parsedUser.isFirstLogin = false
-        localStorage.setItem('wi_user', JSON.stringify(parsedUser))
-      }
-      window.location.reload()
+      updateUser({ isFirstLogin: false })
+      onComplete()
     } catch (err: any) { setError(err.message) } finally { setLoading(false) }
   }
 
@@ -46,7 +40,7 @@ export default function ChangePassword({ onComplete }: { onComplete: () => void 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Bagong Password</label>
-            <input required type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="••••••••" />
+            <input required type="password" minLength={6} autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="••••••••" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Kumpirmahin ang Password</label>

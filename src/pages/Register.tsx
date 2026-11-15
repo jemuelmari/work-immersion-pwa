@@ -1,28 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Loader2, ArrowLeft, UserPlus } from 'lucide-react'
+import { COURSE_TO_FIELD, FIELD_TO_AREAS, SCHOOLS, SECTIONS, normalizeName } from '../lib/constants'
 
-const COURSE_TO_FIELD: Record<string, string> = {
-  'Nursing': 'Health', 'Medical Technology': 'Health', 'Caregiving': 'Health',
-  'BS Agriculture': 'Agriculture', 'Agribusiness': 'Agriculture', 'Animal Science': 'Agriculture',
-  'IT': 'Engineering/IT', 'Civil Engineering': 'Engineering/IT', 'Electrical Engineering': 'Engineering/IT', 'Computer Science': 'Engineering/IT', 'Geodetic Engineering': 'Engineering/IT',
-  'Accountancy': 'Business', 'Business Admin': 'Business', 'Entrepreneurship': 'Business', 'Marketing': 'Business',
-  'BEEd': 'Education', 'BSEd': 'Education', 'Early Childhood Education': 'Education'
-}
-
-const FIELD_TO_AREAS: Record<string, string[]> = {
-  'Health': ['RHU San Jose', 'Lying-In Clinic', 'Hospital'],
-  'Agriculture': ['SHEBA', 'Department of Agriculture', 'Farm'],
-  'Engineering/IT': ['LGU San Jose', 'Construction Site', 'IT Company'],
-  'Business': ['LGU San Jose', 'Papay\'s Bakeshop', 'Bank', 'Office'],
-  'Education': []
-}
-
-const SCHOOLS = ['Sta. Cruz Elementary School', 'Iba Elementary School', 'San Jose National High School', 'Other School']
-
-const normalizeName = (str: string) => {
-  return str.trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())
-}
 
 export default function Register({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(false)
@@ -40,7 +20,8 @@ export default function Register({ onBack }: { onBack: () => void }) {
     field: 'Health',
     deploymentArea: 'RHU San Jose',
     schoolName: '',
-    password: ''
+    password: '',
+    confirmPassword: ''
   })
 
   // Check kung 12 digits ang LRN
@@ -66,39 +47,53 @@ export default function Register({ onBack }: { onBack: () => void }) {
       return
     }
 
+    if (formData.password.length < 6) {
+      setError('Dapat hindi bababa sa 6 characters ang password.')
+      return
+    }
+    if (formData.password !== formData.confirmPassword) {
+      setError('Hindi magkatugma ang dalawang password.')
+      return
+    }
+    const isEducationField = formData.field === 'Education'
+    if (isEducationField && !formData.schoolName) {
+      setError('Pumili ng school.')
+      return
+    }
+
     setLoading(true)
 
     try {
-      const { data: existing } = await supabase.from('students').select('lrn').eq('lrn', formData.lrn).single()
-      if (existing) throw new Error('Ang LRN na ito ay rehistrado na.')
-
+      // Ang database trigger ang gagawa ng students row mula sa data na ito
+      // (laging "Pending" ang status, hindi ito mababago mula sa app).
       const { error: authError } = await supabase.auth.signUp({
         email: `${formData.lrn}@student.local`,
         password: formData.password,
+        options: {
+          data: {
+            account_type: 'student',
+            first_name: normalizeName(formData.firstName),
+            last_name: normalizeName(formData.lastName),
+            middle_name: normalizeName(formData.middleName),
+            sex: formData.sex,
+            section: formData.section,
+            course: formData.course,
+            field: formData.field,
+            deployment_area: isEducationField ? formData.schoolName : formData.deploymentArea,
+            school_name: isEducationField ? formData.schoolName : null,
+          }
+        }
       })
-      if (authError) throw new Error('Auth Error: ' + authError.message)
+      if (authError) {
+        if (/already registered|already exists/i.test(authError.message)) throw new Error('Ang LRN na ito ay rehistrado na. Kung nakalimutan mo ang password, gamitin ang "Nakalimutan ang Password?".')
+        if (/database error/i.test(authError.message)) throw new Error('Hindi na-save ang registration. I-check ang LRN at subukan ulit.')
+        throw new Error(authError.message)
+      }
 
-      const normalizedLastName = normalizeName(formData.lastName)
-      const normalizedFirstName = normalizeName(formData.firstName)
-      const normalizedMiddleName = normalizeName(formData.middleName)
+      // Huwag munang i-login hangga't hindi approved
+      await supabase.auth.signOut()
 
-      const { error: dbError } = await supabase.from('students').insert({
-        lrn: formData.lrn, 
-        first_name: normalizedFirstName, 
-        last_name: normalizedLastName,
-        middle_name: normalizedMiddleName, 
-        sex: formData.sex,
-        section: formData.section, 
-        field: formData.field,
-        course: formData.course, 
-        deployment_area: formData.deploymentArea || formData.schoolName,
-        password_hash: formData.password, 
-        status: 'Pending', 
-        is_first_login: true
-      })
-      if (dbError) throw new Error('DB Error: ' + dbError.message)
-
-      setSuccess('Matagumpay ang registration! Hintayin mo ang approval ng iyong Teacher.')
+      setSuccess('Matagumpay ang registration! Hintayin mo ang approval ng iyong Teacher bago mag-login.')
       setTimeout(() => onBack(), 3000)
 
     } catch (err: any) {
@@ -141,6 +136,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
             <input 
               required 
               type="text" 
+              inputMode="numeric"
               maxLength={12} 
               value={formData.lrn} 
               onChange={e => setFormData({...formData, lrn: e.target.value.replace(/\D/g, '').slice(0, 12)})} 
@@ -181,8 +177,7 @@ export default function Register({ onBack }: { onBack: () => void }) {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
               <select value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none appearance-none">
-                <option value="12 GAS">12 GAS</option>
-                <option value="12 HUMSS">12 HUMSS</option>
+                {SECTIONS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
               </select>
             </div>
             <div>
@@ -221,7 +216,11 @@ export default function Register({ onBack }: { onBack: () => void }) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input required type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="••••••••" />
+            <input required type="password" minLength={6} autoComplete="new-password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="Hindi bababa sa 6 characters" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Kumpirmahin ang Password</label>
+            <input required type="password" minLength={6} autoComplete="new-password" value={formData.confirmPassword} onChange={e => setFormData({...formData, confirmPassword: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="••••••••" />
           </div>
 
           {/* DISABLED ANG BUTTON KUNG HINDI 12 DIGITS */}

@@ -2,28 +2,8 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, Save, Loader2, User } from 'lucide-react'
+import { COURSE_TO_FIELD, FIELD_TO_AREAS, SCHOOLS, SECTIONS, normalizeName } from '../lib/constants'
 
-const COURSE_TO_FIELD: Record<string, string> = {
-  'Nursing': 'Health', 'Medical Technology': 'Health', 'Caregiving': 'Health',
-  'BS Agriculture': 'Agriculture', 'Agribusiness': 'Agriculture', 'Animal Science': 'Agriculture',
-  'IT': 'Engineering/IT', 'Civil Engineering': 'Engineering/IT', 'Electrical Engineering': 'Engineering/IT', 'Computer Science': 'Engineering/IT', 'Geodetic Engineering': 'Engineering/IT',
-  'Accountancy': 'Business', 'Business Admin': 'Business', 'Entrepreneurship': 'Business', 'Marketing': 'Business',
-  'BEEd': 'Education', 'BSEd': 'Education', 'Early Childhood Education': 'Education'
-}
-
-const FIELD_TO_AREAS: Record<string, string[]> = {
-  'Health': ['RHU San Jose', 'Lying-In Clinic', 'Hospital'],
-  'Agriculture': ['SHEBA', 'Department of Agriculture', 'Farm'],
-  'Engineering/IT': ['LGU San Jose', 'Construction Site', 'IT Company'],
-  'Business': ['LGU San Jose', 'Papay\'s Bakeshop', 'Bank', 'Office'],
-  'Education': []
-}
-
-const SCHOOLS = ['Sta. Cruz Elementary School', 'Iba Elementary School', 'San Jose National High School', 'Other School']
-
-const normalizeName = (str: string) => {
-  return str.trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())
-}
 
 export default function StudentProfile({ onBack }: { onBack: () => void }) {
   const { user } = useAuth()
@@ -47,19 +27,21 @@ export default function StudentProfile({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user?.id) return
-      const { data } = await supabase.from('students').select('*').eq('lrn', user.id).single()
+      const { data, error } = await supabase.from('students').select('*').eq('lrn', user.id).maybeSingle()
+      if (error) setMessage({ type: 'error', text: 'Hindi ma-load ang profile. I-check ang internet.' })
       if (data) {
+        const isEdu = data.field === 'Education'
         setFormData({
           lrn: data.lrn,
-          firstName: data.first_name,
-          lastName: data.last_name,
+          firstName: data.first_name || '',
+          lastName: data.last_name || '',
           middleName: data.middle_name || '',
           sex: data.sex || 'Male',
           section: data.section || '12 GAS',
           course: data.course || 'Nursing',
           field: data.field || 'Health',
-          deploymentArea: data.deployment_area || '',
-          schoolName: data.school_name || ''
+          deploymentArea: isEdu ? '' : (data.deployment_area || ''),
+          schoolName: isEdu ? (data.school_name || data.deployment_area || '') : ''
         })
       }
       setLoading(false)
@@ -80,6 +62,10 @@ export default function StudentProfile({ onBack }: { onBack: () => void }) {
   }
 
   const handleSave = async () => {
+    if (!formData.firstName.trim() || !formData.lastName.trim()) {
+      setMessage({ type: 'error', text: 'Kailangan ang First Name at Last Name.' })
+      return
+    }
     setSaving(true)
     setMessage({ type: '', text: '' })
 
@@ -94,7 +80,8 @@ export default function StudentProfile({ onBack }: { onBack: () => void }) {
           section: formData.section,
           course: formData.course,
           field: formData.field,
-          deployment_area: formData.deploymentArea || formData.schoolName
+          deployment_area: formData.field === 'Education' ? formData.schoolName : formData.deploymentArea,
+          school_name: formData.field === 'Education' ? formData.schoolName : null
         })
         .eq('lrn', formData.lrn)
 
@@ -167,8 +154,7 @@ export default function StudentProfile({ onBack }: { onBack: () => void }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
             <select value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none">
-              <option value="12 GAS">12 GAS</option>
-              <option value="12 HUMSS">12 HUMSS</option>
+              {SECTIONS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
             </select>
           </div>
 

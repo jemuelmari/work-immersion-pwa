@@ -19,23 +19,26 @@ export default function TeacherRegister({ onBack }: { onBack: () => void }) {
       setError('Hindi magkatugma ang dalawang password.')
       return
     }
+    if (password.length < 6) {
+      setError('Dapat hindi bababa sa 6 characters ang password.')
+      return
+    }
 
     setLoading(true)
 
     try {
+      // Ang database trigger ang gagawa ng teachers row (laging Pending / Teacher).
       const { error: authError } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
+        options: { data: { account_type: 'teacher' } }
       })
-      if (authError) throw new Error('Auth Error: ' + authError.message)
+      if (authError) {
+        if (/already registered|already exists/i.test(authError.message)) throw new Error('May account na ang email na ito.')
+        throw new Error(authError.message)
+      }
 
-      const { error: dbError } = await supabase.from('teachers').insert({
-        email,
-        password_hash: password,
-        status: 'Pending',
-        role: 'Teacher'
-      })
-      if (dbError) throw new Error('DB Error: ' + dbError.message)
+      await supabase.auth.signOut()
 
       setSuccess('Matagumpay ang registration! Hintayin mo lang ang approval ng Admin.')
       setTimeout(() => onBack(), 3000)
@@ -72,7 +75,7 @@ export default function TeacherRegister({ onBack }: { onBack: () => void }) {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="••••••••" />
+            <input required type="password" minLength={6} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="••••••••" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Kumpirmahin ang Password</label>

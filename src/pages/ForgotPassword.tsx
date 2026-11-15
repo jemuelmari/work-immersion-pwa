@@ -15,19 +15,11 @@ export default function ForgotPassword({ onBack }: { onBack: () => void }) {
     setError('')
 
     try {
-      // Check if student exists
-      const { data: student } = await supabase.from('students').select('lrn').eq('lrn', lrn).single()
-      if (!student) throw new Error('Walang estudyante na may ganitong LRN.')
-
-      // Create reset request
-      const { error: dbError } = await supabase.from('password_reset_requests').insert({
-        lrn: lrn,
-        reason: reason,
-        status: 'Pending'
-      })
-
-      if (dbError) throw dbError
-
+      if (lrn.length !== 12) throw new Error('Ang LRN ay dapat eksaktong 12 digits.')
+      const { data, error: rpcError } = await supabase.rpc('request_password_reset', { p_lrn: lrn, p_reason: reason })
+      if (rpcError) throw new Error(/fetch|network/i.test(rpcError.message) ? 'Walang internet. Subukan ulit.' : rpcError.message)
+      if (data === 'not_found' || data === 'invalid') throw new Error('Walang estudyante na may ganitong LRN.')
+      // 'already_pending' → tuloy pa rin: may request na, hintayin lang ang teacher
       setSuccess(true)
     } catch (err: any) {
       setError(err.message)
@@ -75,7 +67,7 @@ export default function ForgotPassword({ onBack }: { onBack: () => void }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">LRN (12 digits)</label>
-            <input required type="text" maxLength={12} value={lrn} onChange={e => setLrn(e.target.value.replace(/\D/g, ''))} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="123456789012" />
+            <input required type="text" maxLength={12} value={lrn} inputMode="numeric" onChange={e => setLrn(e.target.value.replace(/\D/g, '').slice(0, 12))} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none" placeholder="123456789012" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Dahilan (Optional)</label>

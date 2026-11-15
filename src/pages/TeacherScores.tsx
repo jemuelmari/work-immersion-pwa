@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { Search, Save, Loader2, ArrowLeft, User } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { TOTAL_DAYS } from '../lib/constants'
 
 interface Student { lrn: string; first_name: string; last_name: string; section: string; }
 
@@ -12,6 +13,7 @@ export default function TeacherScores({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true)
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [scores, setScores] = useState<Record<number, string>>({})
+  const [savedDays, setSavedDays] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -26,30 +28,51 @@ export default function TeacherScores({ onBack }: { onBack: () => void }) {
   const handleSelectStudent = async (student: Student) => {
     setSelectedStudent(student)
     setScores({})
-    const { data } = await supabase.from('scores').select('*').eq('lrn', student.lrn)
-    if (data) {
-      const scoreMap: Record<number, string> = {}
-      data.forEach(s => { scoreMap[s.day_number] = s.score.toString() })
-      setScores(scoreMap)
-    }
+    setSavedDays([])
+    const { data, error } = await supabase.from('scores').select('day_number, score').eq('lrn', student.lrn)
+    if (error) { alert('Hindi ma-load ang scores: ' + error.message); return }
+    const scoreMap: Record<number, string> = {}
+    data?.forEach(s => { if (s.score !== null) scoreMap[s.day_number] = String(s.score) })
+    setScores(scoreMap)
+    setSavedDays(data?.map(s => s.day_number) ?? [])
   }
 
   const handleSaveScores = async () => {
     if (!selectedStudent) return
-    setSaving(true)
-    for (let day = 1; day <= 20; day++) {
-      const scoreValue = scores[day]
-      if (scoreValue !== undefined && scoreValue !== '') {
-        const numScore = parseFloat(scoreValue)
-        if (!isNaN(numScore)) {
-          await supabase.from('scores').upsert({
-            lrn: selectedStudent.lrn, day_number: day, score: numScore, criteria: { submittedBy: user?.name }
-          }, { onConflict: 'lrn,day_number' })
-        }
+
+    const rows: { lrn: string; day_number: number; score: number; criteria: object }[] = []
+    const toDelete: number[] = []
+    for (let day = 1; day <= TOTAL_DAYS; day++) {
+      const raw = (scores[day] ?? '').trim()
+      if (raw === '') {
+        if (savedDays.includes(day)) toDelete.push(day) // binura ng teacher ang score
+        continue
       }
+      const num = Number(raw)
+      if (!Number.isFinite(num) || num < 0 || num > 100) {
+        alert(`Day ${day}: dapat 0 hanggang 100 ang score.`)
+        return
+      }
+      rows.push({ lrn: selectedStudent.lrn, day_number: day, score: num, criteria: { submittedBy: user?.name } })
     }
-    setSaving(false)
-    alert('Scores saved successfully!')
+
+    setSaving(true)
+    try {
+      if (rows.length) {
+        const { error } = await supabase.from('scores').upsert(rows, { onConflict: 'lrn,day_number' })
+        if (error) throw error
+      }
+      if (toDelete.length) {
+        const { error } = await supabase.from('scores').delete().eq('lrn', selectedStudent.lrn).in('day_number', toDelete)
+        if (error) throw error
+      }
+      setSavedDays(rows.map(r => r.day_number))
+      alert('✅ Na-save ang scores!')
+    } catch (err: any) {
+      alert('❌ Hindi na-save: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const filteredStudents = students.filter(s => 
@@ -106,10 +129,10 @@ export default function TeacherScores({ onBack }: { onBack: () => void }) {
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {Array.from({ length: 20 }, (_, i) => i + 1).map(day => (
+                {Array.from({ length: TOTAL_DAYS }, (_, i) => i + 1).map(day => (
                   <div key={day} className="bg-white/50 p-3 rounded-2xl border border-white hover:border-blue-300 transition-colors">
                     <label className="block text-xs font-bold text-gray-600 mb-1">Day {day}</label>
-                    <input type="number" min="0" max="100" value={scores[day] || ''} onChange={(e) => setScores({...scores, [day]: e.target.value})} className="glass-input w-full px-3 py-2 rounded-lg text-sm font-bold text-blue-600 outline-none" placeholder="0" />
+                    <input type="number" min="0" max="100" value={scores[day] ?? ''} onChange={(e) => setScores({...scores, [day]: e.target.value})} className="glass-input w-full px-3 py-2 rounded-lg text-sm font-bold text-blue-600 outline-none" placeholder="0" />
                   </div>
                 ))}
               </div>

@@ -8,10 +8,11 @@ import ChangePassword from './pages/ChangePassword'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentDiary from './pages/StudentDiary'
 import StudentRequirements from './pages/StudentRequirements'
-import StudentProfile from './pages/StudentProfile' // BAGO
+import StudentProfile from './pages/StudentProfile'
 import TeacherDashboard from './pages/TeacherDashboard'
 import TeacherScores from './pages/TeacherScores'
 import TeacherAnnouncements from './pages/TeacherAnnouncements'
+import { startBackgroundSync } from './lib/sync'
 
 type Page = 'dashboard' | 'diary' | 'register' | 'teacher-register' | 'forgot-password' | 'change-password' | 'requirements' | 'scores' | 'announcements' | 'profile'
 
@@ -24,6 +25,17 @@ function AppContent() {
       setCurrentPage('change-password')
     }
   }, [user, currentPage])
+
+  // Bumalik sa login screen pagka-logout
+  useEffect(() => {
+    if (!user) setCurrentPage('dashboard')
+  }, [user])
+
+  // Kusang pag-sync ng attendance at requirements para sa estudyante
+  useEffect(() => {
+    if (user?.role !== 'Student') return
+    return startBackgroundSync()
+  }, [user?.role, user?.id])
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
   

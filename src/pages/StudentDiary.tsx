@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { ArrowLeft, Save, Image as ImageIcon, Loader2, Star } from 'lucide-react'
+import { ArrowLeft, Save, Image as ImageIcon, Loader2, Star, Lock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { TOTAL_DAYS, RUBRIC_CATEGORIES, manilaDate } from '../lib/constants'
+import { compressImage, getFileUrls } from '../lib/files'
 
 export default function StudentDiary({ onBack }: { onBack: () => void }) {
   const { user } = useAuth()
@@ -11,28 +13,37 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
   const [dayNumber, setDayNumber] = useState(1)
   const [entryText, setEntryText] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
-  const [existingImages, setExistingImages] = useState<string[]>([])
+  const [existingImages, setExistingImages] = useState<string[]>([])   // path o lumang URL (sinesave sa DB)
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])     // signed URLs para makita
   const [message, setMessage] = useState({ type: '', text: '' })
   
   const [score, setScore] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
-
-  const today = new Date().toLocaleDateString('en-CA')
+  const [isLocked, setIsLocked] = useState(false)
+  const [entryDate, setEntryDate] = useState<string | null>(null)
 
   const fetchDiary = async (day: number) => {
     setLoading(true)
     setMessage({ type: '', text: '' })
-    const { data } = await supabase.from('diary').select('*').eq('lrn', user?.id).eq('day_number', day).single()
+    setImageFile(null)
+    const { data, error } = await supabase.from('diary').select('*').eq('lrn', user?.id).eq('day_number', day).maybeSingle()
+    if (error) setMessage({ type: 'error', text: 'Hindi ma-load ang diary. I-check ang internet.' })
     if (data) {
       setEntryText(data.entry_text || '')
       setExistingImages(data.image_urls || [])
-      setScore(data.rubric_score)
+      setScore(data.rubric_score ?? null)
       setFeedback(data.teacher_feedback)
+      setIsLocked(!!data.is_locked)
+      setEntryDate(data.date)
+      getFileUrls('diary_images', data.image_urls || []).then(setImagePreviews)
     } else {
       setEntryText('')
       setExistingImages([])
+      setImagePreviews([])
       setScore(null)
       setFeedback(null)
+      setIsLocked(false)
+      setEntryDate(null)
     }
     setLoading(false)
   }
@@ -41,39 +52,49 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) setImageFile(e.target.files[0])
+    e.target.value = '' // para mapili ulit ang parehong file
   }
 
   const handleSave = async () => {
+    if (isLocked) return
     if (!entryText.trim()) { setMessage({ type: 'error', text: 'Hindi pwedeng blangko ang diary.' }); return }
+    if (!navigator.onLine) { setMessage({ type: 'error', text: 'Offline ka. Kailangan ng internet para ma-save ang diary.' }); return }
     setSaving(true)
     setMessage({ type: '', text: '' })
 
-    let uploadedUrls = [...existingImages]
+    const uploadedPaths = [...existingImages]
 
     if (imageFile) {
       try {
-        const fileExt = imageFile.name.split('.').pop()
-        const fileName = `${user?.id}/day_${dayNumber}_${new Date().getTime()}.${fileExt}`
-        const { error: uploadError } = await supabase.storage.from('diary_images').upload(fileName, imageFile)
+        const compressed = await compressImage(imageFile)
+        const filePath = `${user?.id}/day_${dayNumber}_${Date.now()}.jpg`
+        const { error: uploadError } = await supabase.storage.from('diary_images').upload(filePath, compressed, { contentType: 'image/jpeg' })
         if (uploadError) throw uploadError
-        const { data: urlData } = supabase.storage.from('diary_images').getPublicUrl(fileName)
-        uploadedUrls.push(urlData.publicUrl)
-      } catch (err) {
-        setMessage({ type: 'error', text: 'Hindi na-upload ang larawan.' })
+        uploadedPaths.push(filePath)
+      } catch (err: any) {
+        setMessage({ type: 'error', text: 'Hindi na-upload ang larawan. ' + (err?.message || '') })
         setSaving(false)
         return
       }
     }
 
     const { error } = await supabase.from('diary').upsert({
-      lrn: user?.id, day_number: dayNumber, date: today, entry_text: entryText, image_urls: uploadedUrls
+      lrn: user?.id,
+      day_number: dayNumber,
+      date: entryDate || manilaDate(), // huwag palitan ang orihinal na petsa kapag nag-edit
+      entry_text: entryText,
+      image_urls: uploadedPaths
     }, { onConflict: 'lrn,day_number' })
 
-    if (error) setMessage({ type: 'error', text: 'May error sa pag-save sa database.' })
-    else {
+    if (error) {
+      const locked = /row-level security/i.test(error.message)
+      setMessage({ type: 'error', text: locked ? 'Naka-lock na ang diary na ito (na-grade na). Hilingin sa teacher na i-unlock.' : 'May error sa pag-save: ' + error.message })
+    } else {
       setMessage({ type: 'success', text: 'Matagumpay na na-save ang diary!' })
       setImageFile(null)
-      setExistingImages(uploadedUrls)
+      setExistingImages(uploadedPaths)
+      if (!entryDate) setEntryDate(manilaDate())
+      getFileUrls('diary_images', uploadedPaths).then(setImagePreviews)
     }
     setSaving(false)
   }
@@ -92,7 +113,7 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
         <div className="glass-card p-4 rounded-2xl flex items-center justify-between">
           <label className="font-bold text-gray-700">Araw (Day):</label>
           <select value={dayNumber} onChange={(e) => setDayNumber(Number(e.target.value))} className="glass-input px-4 py-2.5 rounded-xl font-bold text-blue-600 outline-none appearance-none">
-            {Array.from({ length: 20 }, (_, i) => i + 1).map(day => <option key={day} value={day}>Day {day}</option>)}
+            {Array.from({ length: TOTAL_DAYS }, (_, i) => i + 1).map(day => <option key={day} value={day}>Day {day}</option>)}
           </select>
         </div>
 
@@ -102,32 +123,38 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
+        {isLocked && (
+          <div className="p-4 rounded-2xl text-sm font-medium bg-yellow-50/80 text-yellow-800 border border-yellow-200 flex items-center gap-2">
+            <Lock size={16} /> Na-grade na at naka-lock ang diary na ito. Hilingin sa teacher na i-unlock kung may babaguhin.
+          </div>
+        )}
+
         <div className="glass-card p-6 rounded-3xl space-y-4">
           <div>
             <label className="block font-bold text-gray-700 mb-2">Ano ang nangyari ngayong araw?</label>
             {loading ? (
               <div className="flex justify-center py-4"><Loader2 className="animate-spin text-blue-500" /></div>
             ) : (
-              <textarea value={entryText} onChange={(e) => setEntryText(e.target.value)} placeholder="Isulat ang iyong mga natutunan, karanasan, at realizations..." className="glass-input w-full h-48 p-4 rounded-2xl outline-none resize-none text-gray-800 leading-relaxed"></textarea>
+              <textarea value={entryText} readOnly={isLocked} onChange={(e) => setEntryText(e.target.value)} placeholder="Isulat ang iyong mga natutunan, karanasan, at realizations..." className="glass-input w-full h-48 p-4 rounded-2xl outline-none resize-none text-gray-800 leading-relaxed"></textarea>
             )}
           </div>
 
-          {existingImages.length > 0 && (
+          {imagePreviews.length > 0 && (
             <div className="pt-2">
               <p className="text-sm font-bold text-gray-700 mb-2">Mga naka-attach na larawan:</p>
               <div className="flex gap-2 overflow-x-auto pb-2">
-                {existingImages.map((url, i) => <img key={i} src={url} alt="Diary" className="h-20 w-20 object-cover rounded-xl shadow-sm border border-white/50" />)}
+                {imagePreviews.map((url, i) => <a key={i} href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt="Diary" className="h-20 w-20 object-cover rounded-xl shadow-sm border border-white/50" /></a>)}
               </div>
             </div>
           )}
 
-          <div className="pt-2 border-t border-white/40">
+          {!isLocked && <div className="pt-2 border-t border-white/40">
             <label className="flex items-center gap-2 cursor-pointer text-blue-600 font-bold text-sm hover:text-blue-700 transition-colors bg-blue-50/50 w-fit px-4 py-2 rounded-xl">
               <ImageIcon size={18} /> Mag-attach ng Larawan
               <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
             </label>
             {imageFile && <p className="text-xs text-green-600 mt-2 font-medium">Napili: {imageFile.name}</p>}
-          </div>
+          </div>}
         </div>
 
         {/* GRADE DISPLAY SECTION WITH RUBRIC GUIDE */}
@@ -145,10 +172,9 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
             <div className="mb-4 bg-white/40 p-4 rounded-xl border border-white/60">
               <p className="text-xs font-bold text-gray-600 uppercase mb-2">Paano ka gina-grade:</p>
               <ul className="text-xs text-gray-600 space-y-1.5">
-                <li><span className="font-bold text-gray-700">Content & Substance (30):</span> Detalye ng karanasan at mga natutunan.</li>
-                <li><span className="font-bold text-gray-700">Organization & Clarity (20):</span> Maayos ba ang daloy ng kwento?</li>
-                <li><span className="font-bold text-gray-700">Depth of Reflection (30):</span> May malalim bang pagninilay?</li>
-                <li><span className="font-bold text-gray-700">Grammar & Mechanics (20):</span> Wastong baybay at bantas.</li>
+                {RUBRIC_CATEGORIES.map(cat => (
+                  <li key={cat.id}><span className="font-bold text-gray-700">{cat.name} ({cat.max}):</span> {cat.description}</li>
+                ))}
               </ul>
             </div>
 
@@ -163,10 +189,10 @@ export default function StudentDiary({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        <button onClick={handleSave} disabled={saving || loading} className="glass-button-primary w-full text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50">
+        {!isLocked && <button onClick={handleSave} disabled={saving || loading} className="glass-button-primary w-full text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50">
           {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
           {saving ? 'Nag-sa-save...' : 'I-save ang Diary'}
-        </button>
+        </button>}
       </div>
     </div>
   )

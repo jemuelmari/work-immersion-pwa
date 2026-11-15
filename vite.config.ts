@@ -7,22 +7,35 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      devOptions: { enabled: true },
+      devOptions: { enabled: false },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'], 
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/qiabbgqqgiukyvntisde\.supabase\.co\/.*/i,
+            // Supabase database reads lang (hindi auth, hindi storage). Para may makita kahit offline.
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET' && url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/rest/v1/'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'supabase-api-cache',
+              networkTimeoutSeconds: 8,
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 7 
+                maxAgeSeconds: 60 * 60 * 24 * 3
               },
               cacheableResponse: {
-                statuses: [0, 200]
+                statuses: [200]
               }
+            }
+          },
+          {
+            // Inter font para pareho ang itsura kahit offline
+            urlPattern: ({ url }) => url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] }
             }
           }
         ]

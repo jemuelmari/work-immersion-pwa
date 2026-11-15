@@ -2,17 +2,15 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock, KeyRound, Edit } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { RUBRIC_CATEGORIES, SECTIONS, normalizeName } from '../lib/constants'
+import { downloadCsv } from '../lib/csv'
+import { getFileUrl, getFileUrls, openFile, downloadMany, safeFilePart } from '../lib/files'
 
 interface Student { lrn: string; first_name: string; last_name: string; middle_name: string; section: string; status: string; field: string; course: string; deployment_area: string; sex: string; }
 interface AttendanceRecord { id: string; date: string; time_in: string; time_out: string; morning_in: string; morning_out: string; afternoon_in: string; afternoon_out: string; total_hours: number; time_in_photo: string; time_out_photo: string; }
-interface DiaryRecord { id: string; day_number: number; date: string; entry_text: string; image_urls: string[]; rubric_score: number; teacher_feedback: string; is_locked: boolean; }
+interface DiaryRecord { id: string; day_number: number; date: string; entry_text: string; image_urls: string[]; rubric_score: number | null; teacher_feedback: string; is_locked: boolean; }
 interface RequirementRecord { id: string; requirement_name: string; file_name: string; file_url: string; uploaded_at: string; }
 interface ResetRequest { id: string; lrn: string; reason: string; status: string; requested_at: string; student_name?: string; }
-
-const normalizeName = (str: string) => {
-  if (!str) return '';
-  return str.trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase())
-}
 
 export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: { onOpenScores: () => void; onOpenAnnouncements: () => void }) {
   const { user, logout } = useAuth()
@@ -34,6 +32,9 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [loadingRecords, setLoadingRecords] = useState(false)
   
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
+  const [diaryImageUrls, setDiaryImageUrls] = useState<string[]>([])
+  const [downloadingReqs, setDownloadingReqs] = useState(false)
+  const isAdmin = user?.role === 'Admin'
   const [selectedDiaryEntry, setSelectedDiaryEntry] = useState<DiaryRecord | null>(null)
   const [isViewingDiary, setIsViewingDiary] = useState(false)
   const [isGradingModalOpen, setIsGradingModalOpen] = useState(false)
@@ -49,69 +50,68 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [newPasswordForStudent, setNewPasswordForStudent] = useState('')
   const [isResetting, setIsResetting] = useState(false)
 
-  const RUBRIC_CATEGORIES = [
-    { id: 'content', name: 'Content & Substance', max: 30, description: 'Detalye ng karanasan, mga natutunan, at mga gawain sa araw na iyon.' },
-    { id: 'organization', name: 'Organization & Clarity', max: 20, description: 'Maayos ba ang daloy ng kwento? Madaling maintindihan ang mga pangyayari?' },
-    { id: 'reflection', name: 'Depth of Reflection', max: 30, description: 'May malalim bang pagninilay (realizations) sa mga nangyari? Ano ang natutunan mo?' },
-    { id: 'mechanics', name: 'Grammar & Mechanics', max: 20, description: 'Wastong baybay, bantas, at paggamit ng salita.' },
-  ]
-
   const fetchStudents = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('students').select('*').order('last_name', { ascending: true })
-    if (!error && data) setStudents(data)
+    const { data, error } = await supabase
+      .from('students')
+      .select('lrn, first_name, last_name, middle_name, section, status, field, course, deployment_area, sex')
+      .order('last_name', { ascending: true })
+    if (error) alert('Hindi ma-load ang mga estudyante: ' + error.message)
+    else if (data) setStudents(data)
 
-    const { data: teacherData } = await supabase.from('teachers').select('*').eq('status', 'Pending')
-    if (teacherData) setPendingTeachers(teacherData)
+    // Admin lang ang nakakakita at nakaka-approve ng ibang teacher
+    if (isAdmin) {
+      const { data: teacherData } = await supabase.from('teachers').select('email, role, status, created_at').eq('status', 'Pending')
+      setPendingTeachers(teacherData ?? [])
+    } else {
+      setPendingTeachers([])
+    }
 
     const { data: resetData } = await supabase.from('password_reset_requests').select('*, students(first_name, last_name)').eq('status', 'Pending').order('requested_at', { ascending: true })
-    if (resetData) {
-      const formattedRequests: ResetRequest[] = resetData.map((r: any) => ({
-        id: r.id, lrn: r.lrn, reason: r.reason, status: r.status, requested_at: r.requested_at,
-        student_name: r.students ? `${r.students.last_name}, ${r.students.first_name}` : r.lrn
-      }))
-      setResetRequests(formattedRequests)
-    }
+    const formattedRequests: ResetRequest[] = (resetData ?? []).map((r: any) => ({
+      id: r.id, lrn: r.lrn, reason: r.reason, status: r.status, requested_at: r.requested_at,
+      student_name: r.students ? `${r.students.last_name}, ${r.students.first_name}` : r.lrn
+    }))
+    setResetRequests(formattedRequests)
     setLoading(false)
   }
 
   useEffect(() => { fetchStudents() }, [])
 
-  const handleApprove = async (lrn: string) => {
-    const { error } = await supabase.from('students').update({ status: 'Approved' }).eq('lrn', lrn)
-    if (!error) fetchStudents()
-    else alert("Error sa pag-approve: " + error.message)
+  // Kapag hinarang ng RLS, walang error pero walang nabago: kaya chine-check ang ibinalik na rows.
+  const updateStatus = async (table: 'students' | 'teachers', key: 'lrn' | 'email', value: string, status: string) => {
+    const { data, error } = await supabase.from(table).update({ status }).eq(key, value).select(key)
+    if (error) { alert('Error: ' + error.message); return }
+    if (!data || data.length === 0) { alert('Walang nabago. Baka wala kang pahintulot para dito.'); return }
+    fetchStudents()
   }
 
-  const handleReject = async (lrn: string) => {
+  const handleApprove = (lrn: string) => updateStatus('students', 'lrn', lrn, 'Approved')
+
+  const handleReject = (lrn: string) => {
     if (!confirm("Sigurado ka bang gusto mong i-reject ito?")) return
-    const { error } = await supabase.from('students').update({ status: 'Rejected' }).eq('lrn', lrn)
-    if (!error) fetchStudents()
-    else alert("Error sa pag-reject: " + error.message)
+    updateStatus('students', 'lrn', lrn, 'Rejected')
   }
 
-  const handleApproveTeacher = async (email: string) => {
-    const { error } = await supabase.from('teachers').update({ status: 'Approved' }).eq('email', email)
-    if (!error) fetchStudents()
-    else alert("Error: " + error.message)
-  }
+  const handleApproveTeacher = (email: string) => updateStatus('teachers', 'email', email, 'Approved')
 
-  const handleRejectTeacher = async (email: string) => {
+  const handleRejectTeacher = (email: string) => {
     if (!confirm("I-reject ang teacher na ito?")) return
-    const { error } = await supabase.from('teachers').update({ status: 'Rejected' }).eq('email', email)
-    if (!error) fetchStudents()
-    else alert("Error: " + error.message)
+    updateStatus('teachers', 'email', email, 'Rejected')
   }
 
   const handleResetPassword = async () => {
     if (!resetRequestToProcess || !newPasswordForStudent) return
+    if (newPasswordForStudent.length < 6) { alert('Dapat hindi bababa sa 6 characters ang password.'); return }
     setIsResetting(true)
     try {
-      const { error: studentError } = await supabase.from('students').update({ password_hash: newPasswordForStudent, is_first_login: true }).eq('lrn', resetRequestToProcess.lrn)
-      if (studentError) throw studentError
-      const { error: requestError } = await supabase.from('password_reset_requests').update({ status: 'Approved', processed_at: new Date().toISOString() }).eq('id', resetRequestToProcess.id)
-      if (requestError) throw requestError
-      alert(`✅ Password reset successful!\n\nLRN: ${resetRequestToProcess.lrn}\nBagong Password: ${newPasswordForStudent}\n\nSabihin ito sa estudyante.`)
+      // Binabago ang totoong login password (Supabase Auth) sa pamamagitan ng database function
+      const { error } = await supabase.rpc('reset_student_password', {
+        p_lrn: resetRequestToProcess.lrn,
+        p_new_password: newPasswordForStudent,
+      })
+      if (error) throw error
+      alert(`✅ Password reset successful!\n\nLRN: ${resetRequestToProcess.lrn}\nBagong Password: ${newPasswordForStudent}\n\nSabihin ito sa estudyante. Papalitan niya ito pagka-login.`)
       setResetRequestToProcess(null)
       setNewPasswordForStudent('')
       fetchStudents()
@@ -122,7 +122,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
     if (!editFormData) return
     setIsSavingEdit(true)
     try {
-      const { error } = await supabase.from('students').update({
+      const { data, error } = await supabase.from('students').update({
         first_name: normalizeName(editFormData.first_name) || 'Unknown',
         last_name: normalizeName(editFormData.last_name) || 'Unknown',
         middle_name: normalizeName(editFormData.middle_name),
@@ -131,9 +131,10 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         field: editFormData.field || 'Health',
         course: editFormData.course || 'Nursing',
         deployment_area: editFormData.deployment_area || ''
-      }).eq('lrn', editFormData.lrn)
+      }).eq('lrn', editFormData.lrn).select('lrn')
 
       if (error) throw error
+      if (!data || data.length === 0) throw new Error('Walang nabago. Baka wala kang pahintulot.')
       
       setEditingStudent(null)
       setEditFormData(null)
@@ -172,43 +173,60 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   })
 
   const handleExportStudents = () => {
-    let csvContent = "LRN,Last Name,First Name,Middle Name,Sex,Section,Field,Course,Deployment Area\n"
-    filteredStudents.forEach(s => {
-      csvContent += `${s.lrn},"${s.last_name || ''}","${s.first_name || ''}","${s.middle_name || ''}",${s.sex || ''},${s.section || ''},${s.field || ''},${s.course || ''},${s.deployment_area || ''}\n`
-    })
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement("a")
-    link.setAttribute("href", URL.createObjectURL(blob))
-    link.setAttribute("download", `StudentList_${filterSection}_${filterSex}.csv`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    const rows: unknown[][] = [['LRN', 'Last Name', 'First Name', 'Middle Name', 'Sex', 'Section', 'Field', 'Course', 'Deployment Area']]
+    filteredStudents.forEach(s => rows.push([s.lrn, s.last_name, s.first_name, s.middle_name, s.sex, s.section, s.field, s.course, s.deployment_area]))
+    downloadCsv(`StudentList_${filterSection}_${filterSex}.csv`, rows)
   }
 
   const handleViewRecord = async (student: Student) => {
     setSelectedStudent(student)
     setModalTab('attendance')
+    setAttendance([])
+    setDiary([])
+    setRequirements([])
     setLoadingRecords(true)
-    const { data: attData } = await supabase.from('attendance').select('*').eq('lrn', student.lrn).order('date', { ascending: true })
-    if (attData) setAttendance(attData)
-    const { data: diaryData } = await supabase.from('diary').select('*').eq('lrn', student.lrn).order('day_number', { ascending: true })
-    if (diaryData) setDiary(diaryData)
-    const { data: reqData } = await supabase.from('requirements').select('*').eq('lrn', student.lrn).order('uploaded_at', { ascending: false })
-    if (reqData) setRequirements(reqData)
+    const [att, dia, req] = await Promise.all([
+      supabase.from('attendance').select('*').eq('lrn', student.lrn).order('date', { ascending: true }),
+      supabase.from('diary').select('*').eq('lrn', student.lrn).order('day_number', { ascending: true }),
+      supabase.from('requirements').select('*').eq('lrn', student.lrn).order('uploaded_at', { ascending: false }),
+    ])
+    if (att.error || dia.error || req.error) alert('May hindi na-load na record. I-check ang internet.')
+    setAttendance(att.data ?? [])
+    setDiary(dia.data ?? [])
+    setRequirements(req.data ?? [])
     setLoadingRecords(false)
   }
 
+  const viewPhoto = async (value: string) => {
+    const url = await getFileUrl('attendance_photos', value)
+    if (url) setSelectedPhoto(url)
+    else alert('Hindi mabuksan ang litrato.')
+  }
+
+  const handleDownloadAllReqs = async () => {
+    if (!selectedStudent) return
+    setDownloadingReqs(true)
+    await downloadMany(requirements.map(req => ({
+      bucket: 'requirements_files' as const,
+      value: req.file_url,
+      fileName: `${selectedStudent.lrn}_${safeFilePart(selectedStudent.last_name)}_${safeFilePart(selectedStudent.first_name)}_${safeFilePart(req.requirement_name) || 'Document'}.pdf`,
+    })))
+    setDownloadingReqs(false)
+  }
+
   const handleResetAttendance = async (recordId: string) => {
-    if (!confirm("Sigurado ka bang gusto mong i-reset ang attendance record na ito?")) return
-    const { error } = await supabase.from('attendance').delete().eq('id', recordId)
-    if (!error) { setAttendance(attendance.filter(a => a.id !== recordId)); alert("Na-reset na.") }
-    else { alert("Error: " + error.message) }
+    if (!confirm("Sigurado ka bang gusto mong i-reset (burahin) ang attendance record na ito?")) return
+    const { data, error } = await supabase.from('attendance').delete().eq('id', recordId).select('id')
+    if (error) { alert("Error: " + error.message); return }
+    if (!data || data.length === 0) { alert('Walang nabura. Baka wala kang pahintulot.'); return }
+    setAttendance(attendance.filter(a => a.id !== recordId))
+    alert("Na-reset na.")
   }
 
   const handleUnlockDiary = async (entryId: string) => {
     if (!confirm("Sigurado ka bang gusto mong i-unlock ito?")) return
-    const { error } = await supabase.from('diary').update({ is_locked: false }).eq('id', entryId)
+    const { data: changed, error } = await supabase.from('diary').update({ is_locked: false }).eq('id', entryId).select('id')
+    if (!error && (!changed || changed.length === 0)) { alert('Walang nabago. Baka wala kang pahintulot.'); return }
     if (!error) {
       if (selectedStudent) {
         const { data } = await supabase.from('diary').select('*').eq('lrn', selectedStudent.lrn).order('day_number', { ascending: true })
@@ -226,39 +244,69 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
 
   const handleExportDTR = () => {
     if (!selectedStudent || attendance.length === 0) return
-    let csvContent = `DAILY TIME RECORD\nName: ${selectedStudent.last_name || ''}, ${selectedStudent.first_name || ''}\nSection: ${selectedStudent.section || ''}\nField: ${selectedStudent.field || ''}\nCourse: ${selectedStudent.course || ''}\nArea: ${selectedStudent.deployment_area || ''}\nLRN: ${selectedStudent.lrn || ''}\n\n`
-    csvContent += "Day,Date,Morning In,Morning Out,Afternoon In,Afternoon Out,Total Hours\n"
-    let grandTotal = 0;
+    const rows: unknown[][] = [
+      ['DAILY TIME RECORD'],
+      ['Name', `${selectedStudent.last_name || ''}, ${selectedStudent.first_name || ''}`],
+      ['Section', selectedStudent.section],
+      ['Field', selectedStudent.field],
+      ['Course', selectedStudent.course],
+      ['Area', selectedStudent.deployment_area],
+      ['LRN', selectedStudent.lrn],
+      [],
+      ['Day', 'Date', 'Morning In', 'Morning Out', 'Afternoon In', 'Afternoon Out', 'Total Hours'],
+    ]
+    let grandTotal = 0
     attendance.forEach((rec, index) => {
-      const dayNum = index + 1;
       const totalHrs = parseFloat(rec.total_hours?.toString() || '0')
-      grandTotal += totalHrs;
-      csvContent += `${dayNum},${rec.date},${rec.morning_in || '-'},${rec.morning_out || '-'},${rec.afternoon_in || '-'},${rec.afternoon_out || '-'},${totalHrs.toFixed(2)}\n`;
+      grandTotal += totalHrs
+      rows.push([index + 1, rec.date, rec.morning_in || '-', rec.morning_out || '-', rec.afternoon_in || '-', rec.afternoon_out || '-', totalHrs.toFixed(2)])
     })
-    csvContent += `\n\nTOTAL HOURS:,${grandTotal.toFixed(2)}\n`
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement("a")
-    link.setAttribute("href", URL.createObjectURL(blob))
-    link.setAttribute("download", `DTR_DepEd48_${selectedStudent.last_name || ''}_${selectedStudent.first_name || ''}.csv`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    rows.push([], ['TOTAL HOURS', grandTotal.toFixed(2)])
+    downloadCsv(`DTR_DepEd48_${safeFilePart(selectedStudent.last_name)}_${safeFilePart(selectedStudent.first_name)}.csv`, rows)
   }
 
-  const openDiaryView = (entry: DiaryRecord) => { setSelectedDiaryEntry(entry); setIsViewingDiary(true) }
-  const openGradingModal = (entry: DiaryRecord) => { setSelectedDiaryEntry(entry); setGradingScores({}); setFeedback(entry.teacher_feedback || ''); setIsViewingDiary(false); setIsGradingModalOpen(true) }
+  const openDiaryView = (entry: DiaryRecord) => {
+    setSelectedDiaryEntry(entry)
+    setDiaryImageUrls([])
+    setIsViewingDiary(true)
+    getFileUrls('diary_images', entry.image_urls || []).then(setDiaryImageUrls)
+  }
+
+  const openGradingModal = async (entry: DiaryRecord) => {
+    setSelectedDiaryEntry(entry)
+    setGradingScores({})
+    setFeedback(entry.teacher_feedback || '')
+    setIsViewingDiary(false)
+    setIsGradingModalOpen(true)
+    // I-load ang dating grade sa bawat criterion (para sa Re-grade)
+    const { data } = await supabase.from('diary_scores').select('criteria, score').eq('diary_id', entry.id)
+    if (data && data.length) {
+      const map: Record<string, string> = {}
+      RUBRIC_CATEGORIES.forEach(cat => {
+        const found = data.find(d => d.criteria === cat.name)
+        if (found && found.score !== null) map[cat.id] = String(found.score)
+      })
+      setGradingScores(map)
+    }
+  }
 
   const handleSaveGrades = async () => {
     if (!selectedDiaryEntry) return
+    // Validation: lahat ay may grade at hindi lampas sa max
+    for (const cat of RUBRIC_CATEGORIES) {
+      const raw = (gradingScores[cat.id] ?? '').trim()
+      const num = Number(raw)
+      if (raw === '' || !Number.isFinite(num) || num < 0 || num > cat.max) {
+        alert(`${cat.name}: maglagay ng score mula 0 hanggang ${cat.max}.`)
+        return
+      }
+    }
     setSavingGrades(true)
     try {
-      let totalScore = 0
-      RUBRIC_CATEGORIES.forEach(cat => { totalScore += parseFloat(gradingScores[cat.id] || '0') })
-      for (const cat of RUBRIC_CATEGORIES) {
-        const scoreValue = parseFloat(gradingScores[cat.id] || '0')
-        await supabase.from('diary_scores').upsert({ diary_id: selectedDiaryEntry.id, criteria: cat.name, score: scoreValue }, { onConflict: 'diary_id,criteria' })
-      }
+      const rows = RUBRIC_CATEGORIES.map(cat => ({ diary_id: selectedDiaryEntry.id, criteria: cat.name, score: Number(gradingScores[cat.id]) }))
+      const totalScore = rows.reduce((sum, r) => sum + r.score, 0)
+      const { error: scoresError } = await supabase.from('diary_scores').upsert(rows, { onConflict: 'diary_id,criteria' })
+      if (scoresError) throw scoresError
       const { error: updateError } = await supabase.from('diary').update({ rubric_score: totalScore, teacher_feedback: feedback, is_locked: true }).eq('id', selectedDiaryEntry.id)
       if (updateError) throw updateError
       if (selectedStudent) {
@@ -266,7 +314,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         if (data) setDiary(data)
       }
       setIsGradingModalOpen(false)
-      alert('Grades saved!')
+      alert(`✅ Grades saved! Total: ${totalScore}/100`)
     } catch (err: any) { alert('Error: ' + err.message) } finally { setSavingGrades(false) }
   }
 
@@ -307,7 +355,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
                   <div className="relative w-full md:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="glass-input w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none" /></div>
-                  <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none"><option value="All">All Sections</option><option value="12 GAS">12 GAS</option><option value="12 HUMSS">12 HUMSS</option></select>
+                  <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none"><option value="All">All Sections</option>{SECTIONS.map(sec => <option key={sec} value={sec}>{sec}</option>)}</select>
                   <select value={filterSex} onChange={e => setFilterSex(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none"><option value="All">All Sex</option><option value="Male">Male</option><option value="Female">Female</option></select>
                 </div>
                 <button onClick={handleExportStudents} className="bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-green-200 transition-colors w-full md:w-auto justify-center"><Download size={16} /> Export List</button>
@@ -357,7 +405,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               )}
             </div>
 
-            <div className="glass-card rounded-3xl overflow-hidden">
+            {isAdmin && <div className="glass-card rounded-3xl overflow-hidden">
               <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Teacher Registrations</h2></div>
               {pendingTeachers.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na teacher.</div> : (
                 <table className="w-full text-left text-sm whitespace-nowrap">
@@ -375,7 +423,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                   </tbody>
                 </table>
               )}
-            </div>
+            </div>}
           </div>
         )}
 
@@ -449,8 +497,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Section</label>
                 <select value={editFormData.section || '12 GAS'} onChange={(e) => setEditFormData({...editFormData, section: e.target.value})} className="glass-input w-full px-4 py-2 rounded-xl outline-none">
-                  <option value="12 GAS">12 GAS</option>
-                  <option value="12 HUMSS">12 HUMSS</option>
+                  {SECTIONS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
                 </select>
               </div>
               <div className="flex justify-end gap-3 mt-6">
@@ -501,8 +548,8 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                               <td className="px-4 py-3 text-gray-600 font-mono text-xs text-center">{rec.morning_in ? rec.morning_in : '-'} / {rec.morning_out ? rec.morning_out : '-'}</td>
                               <td className="px-4 py-3 text-gray-600 font-mono text-xs text-center">{rec.afternoon_in ? rec.afternoon_in : '-'} / {rec.afternoon_out ? rec.afternoon_out : '-'}</td>
                               <td className="px-4 py-3 flex gap-2">
-                                {rec.time_in_photo && <button onClick={() => setSelectedPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold hover:bg-blue-200 transition-colors">In</button>}
-                                {rec.time_out_photo && <button onClick={() => setSelectedPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-bold hover:bg-orange-200 transition-colors">Out</button>}
+                                {rec.time_in_photo && <button onClick={() => viewPhoto(rec.time_in_photo)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold hover:bg-blue-200 transition-colors">In</button>}
+                                {rec.time_out_photo && <button onClick={() => viewPhoto(rec.time_out_photo)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-lg font-bold hover:bg-orange-200 transition-colors">Out</button>}
                               </td>
                               <td className="px-4 py-3 text-blue-600 font-extrabold text-right">{rec.total_hours || 0} hrs</td>
                               <td className="px-4 py-3 text-right"><button onClick={() => handleResetAttendance(rec.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-2 rounded-lg transition-colors"><RotateCcw size={16} /></button></td>
@@ -525,8 +572,8 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                         </div>
                         <div className="mt-4 pt-4 border-t border-gray-100 flex flex-col gap-2">
                           <div className="flex items-center justify-between">
-                            {entry.rubric_score ? <span className="font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded text-sm flex items-center gap-1"><Star size={14} /> Score: {entry.rubric_score}/100</span> : <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>}
-                            <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">{entry.rubric_score ? 'Re-grade' : 'Grade'}</button>
+                            {entry.rubric_score !== null && entry.rubric_score !== undefined ? <span className="font-extrabold text-green-600 bg-green-50 px-2 py-1 rounded text-sm flex items-center gap-1"><Star size={14} /> Score: {entry.rubric_score}/100</span> : <span className="text-xs text-gray-400 font-medium italic">Not yet graded</span>}
+                            <button onClick={(e) => { e.stopPropagation(); openGradingModal(entry); }} className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">{entry.rubric_score !== null && entry.rubric_score !== undefined ? 'Re-grade' : 'Grade'}</button>
                           </div>
                           {entry.is_locked && <button onClick={(e) => { e.stopPropagation(); handleUnlockDiary(entry.id); }} className="text-xs bg-orange-50 text-orange-600 font-bold px-3 py-1.5 rounded-lg hover:bg-orange-100 transition-colors w-full flex items-center justify-center gap-1"><Unlock size={12} /> Unlock for Re-upload</button>}
                         </div>
@@ -538,13 +585,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                 requirements.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang na-upload na requirements.</div> : (
                   <>
                     <div className="mb-4 flex justify-end">
-                      <button onClick={() => { requirements.forEach(req => { const safeName = req.requirement_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Document'; const fileName = `${selectedStudent.lrn}_${selectedStudent.last_name}_${selectedStudent.first_name}_${safeName}.pdf`; const link = document.createElement('a'); link.href = req.file_url; link.download = fileName; link.target = '_blank'; link.click() }) }} className="text-sm bg-green-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-green-600 flex items-center gap-2 shadow-lg shadow-green-200 transition-colors"><Download size={16} /> Download All Files</button>
+                      <button onClick={handleDownloadAllReqs} disabled={downloadingReqs} className="text-sm bg-green-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-green-600 flex items-center gap-2 shadow-lg shadow-green-200 transition-colors disabled:opacity-50"><Download size={16} /> {downloadingReqs ? 'Dina-download...' : 'Download All Files'}</button>
                     </div>
                     <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden divide-y divide-gray-100">
                       {requirements.map(req => (
                         <div key={req.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors">
                           <div className="flex items-center gap-3"><div className="bg-blue-100 p-2 rounded-lg text-blue-600"><FileText size={20} /></div><div><p className="font-bold text-sm text-gray-800">{req.requirement_name}</p><p className="text-xs text-gray-500 font-medium">{req.file_name} • {new Date(req.uploaded_at).toLocaleDateString()}</p></div></div>
-                          <a href={req.file_url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">View</a>
+                          <button onClick={() => openFile('requirements_files', req.file_url)} className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">View</button>
                         </div>
                       ))}
                     </div>
@@ -565,7 +612,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[75]">
           <div className="glass-card rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
             <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center"><div><h3 className="font-extrabold text-gray-800 text-lg">Day {selectedDiaryEntry.day_number} Diary</h3><p className="text-xs text-gray-500 font-medium">{selectedDiaryEntry.date}</p></div><button onClick={() => setIsViewingDiary(false)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button></div>
-            <div className="p-6 overflow-y-auto"><p className="text-gray-700 whitespace-pre-wrap mb-6 leading-relaxed">{selectedDiaryEntry.entry_text}</p>{selectedDiaryEntry.image_urls?.length > 0 && (<div className="space-y-3 mt-4 pt-4 border-t border-white/50"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attached Images</p>{selectedDiaryEntry.image_urls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-xl border border-white shadow-sm" />)}</div>)}</div>
+            <div className="p-6 overflow-y-auto"><p className="text-gray-700 whitespace-pre-wrap mb-6 leading-relaxed">{selectedDiaryEntry.entry_text}</p>{diaryImageUrls.length > 0 && (<div className="space-y-3 mt-4 pt-4 border-t border-white/50"><p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attached Images</p>{diaryImageUrls.map((url, i) => <img key={i} src={url} alt="Diary" className="w-full rounded-xl border border-white shadow-sm" />)}</div>)}</div>
           </div>
         </div>
       )}
@@ -576,7 +623,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             <div className="p-5 border-b border-white/50 bg-white/40 flex justify-between items-center"><div><h3 className="font-extrabold text-gray-800 text-lg">Grade Diary Entry</h3><p className="text-xs text-gray-500 font-medium">Day {selectedDiaryEntry.day_number} - {selectedDiaryEntry.date}</p></div><button onClick={() => setIsGradingModalOpen(false)} className="text-gray-400 hover:text-gray-600 bg-white/50 p-2 rounded-full transition-colors"><X size={20} /></button></div>
             <div className="p-6 overflow-y-auto space-y-4 bg-gray-50/50">
               {RUBRIC_CATEGORIES.map(cat => (
-                <div key={cat.id} className="bg-white/80 p-4 rounded-xl border border-white"><div className="flex justify-between items-center mb-1"><label className="text-sm font-bold text-gray-700">{cat.name}</label><span className="text-xs font-medium text-gray-500">Max: {cat.max}</span></div><p className="text-xs text-gray-500 mb-2 italic">{cat.description}</p><input type="number" min="0" max={cat.max} value={gradingScores[cat.id] || ''} onChange={(e) => setGradingScores({...gradingScores, [cat.id]: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-lg font-bold text-blue-600" placeholder="0" /></div>
+                <div key={cat.id} className="bg-white/80 p-4 rounded-xl border border-white"><div className="flex justify-between items-center mb-1"><label className="text-sm font-bold text-gray-700">{cat.name}</label><span className="text-xs font-medium text-gray-500">Max: {cat.max}</span></div><p className="text-xs text-gray-500 mb-2 italic">{cat.description}</p><input type="number" min="0" max={cat.max} value={gradingScores[cat.id] ?? ''} onChange={(e) => setGradingScores({...gradingScores, [cat.id]: e.target.value})} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-lg font-bold text-blue-600" placeholder="0" /></div>
               ))}
               <div className="bg-white/80 p-4 rounded-xl border border-white"><label className="block text-sm font-bold text-gray-700 mb-2">Teacher's Feedback</label><textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none h-24" placeholder="Isulat ang feedback..."></textarea></div>
             </div>
