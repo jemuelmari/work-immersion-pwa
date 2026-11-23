@@ -58,3 +58,34 @@ body {
 .glass-button-secondary:hover {
   background: rgba(255, 255, 255, 0.9);
 }
+
+/* Scrollable tables: i-swipe o i-drag pakaliwa/pakanan kapag makitid ang screen */
+html, body {
+  overflow-x: hidden;
+}
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.35);
+  border-radius: 9999px;
+}
+.table-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Laging nakikita ang Action column (Approve / Reset Password) */
+.sticky-action {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: -8px 0 10px -8px rgba(0, 0, 0, 0.2);
+}

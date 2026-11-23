@@ -92,7 +92,7 @@ export default function TeacherScores({ onBack }: { onBack: () => void }) {
       <div className="p-4 max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
         
         {/* LEFT: STUDENT LIST */}
-        <div className="glass-card rounded-3xl h-[80vh] flex flex-col overflow-hidden">
+        <div className="glass-card rounded-3xl h-[45vh] md:h-[80vh] flex flex-col overflow-hidden">
           <div className="p-4 bg-white/40 border-b border-white/50 backdrop-blur-sm">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -115,10 +115,10 @@ export default function TeacherScores({ onBack }: { onBack: () => void }) {
         </div>
 
         {/* RIGHT: SCORE ENTRY */}
-        <div className="md:col-span-2 glass-card rounded-3xl p-6">
+        <div className="md:col-span-2 glass-card rounded-3xl p-4 sm:p-6 min-w-0">
           {selectedStudent ? (
             <>
-              <div className="flex justify-between items-center mb-6 pb-4 border-b border-white/50">
+              <div className="flex flex-wrap justify-between items-center gap-3 mb-6 pb-4 border-b border-white/50">
                 <div>
                   <h2 className="font-extrabold text-xl text-gray-800">{selectedStudent.last_name}, {selectedStudent.first_name}</h2>
                   <p className="text-sm text-gray-500 font-medium">{selectedStudent.section}</p>

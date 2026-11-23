@@ -343,7 +343,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   return (
     <div className="min-h-screen relative pb-10">
       <div className="glass-panel p-4 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto flex justify-between items-center">
+        <div className="max-w-5xl mx-auto flex flex-wrap justify-between items-center gap-2">
           <div>
             <h1 className="font-bold text-lg text-gray-800">Teacher Dashboard</h1>
             <p className="text-gray-500 text-xs font-medium">{user?.role} | {user?.name}</p>
@@ -355,13 +355,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
       </div>
 
       <div className="max-w-5xl mx-auto p-4 space-y-6 mt-2">
-        <div className="flex flex-wrap gap-2 p-1.5 bg-white/40 backdrop-blur-md rounded-2xl border border-white/50 w-fit">
+        <div className="flex flex-wrap gap-2 p-1.5 bg-white/40 backdrop-blur-md rounded-2xl border border-white/50 w-fit max-w-full">
           <button onClick={() => setActiveTab('directory')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'directory' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><Users size={16} /> Directory</button>
           <button onClick={() => setActiveTab('approvals')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'approvals' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><UserPlus size={16} /> Approvals {pendingStudents.length + pendingTeachers.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingStudents.length + pendingTeachers.length}</span>}</button>
           <button onClick={() => setActiveTab('reset-requests')} className={`px-5 py-2.5 font-bold text-sm flex items-center gap-2 rounded-xl transition-all ${activeTab === 'reset-requests' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'}`}><KeyRound size={16} /> Reset Requests {resetRequests.length > 0 && <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full">{resetRequests.length}</span>}</button>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button onClick={onOpenScores} className="glass-card px-5 py-3 rounded-2xl flex items-center gap-2 font-bold text-gray-700 hover:bg-white/90 transition-colors"><CalendarCheck size={18} className="text-blue-600" /> Manage Scores</button>
           <button onClick={onOpenAnnouncements} className="glass-card px-5 py-3 rounded-2xl flex items-center gap-2 font-bold text-gray-700 hover:bg-white/90 transition-colors"><BookOpen size={18} className="text-blue-600" /> Announcements</button>
         </div>
@@ -370,7 +370,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="glass-card p-6 rounded-3xl flex items-center gap-5"><div className="bg-blue-100 text-blue-600 p-4 rounded-2xl"><Users size={28} /></div><div><p className="text-sm text-gray-500 font-bold">Approved Students</p><p className="text-3xl font-extrabold text-gray-800">{approvedStudents.length}</p></div></div>
-              <div className="glass-card p-6 rounded-3xl flex items-center gap-5"><div className="bg-green-100 text-green-600 p-4 rounded-2xl"><CalendarCheck size={28} /></div><div><p className="text-sm text-gray-500 font-bold">Sections</p><p className="text-3xl font-extrabold text-gray-800">12 GAS & 12 HUMSS</p></div></div>
+              <div className="glass-card p-6 rounded-3xl flex items-center gap-5"><div className="bg-green-100 text-green-600 p-4 rounded-2xl"><CalendarCheck size={28} /></div><div><p className="text-sm text-gray-500 font-bold">Sections</p><p className="text-2xl sm:text-3xl font-extrabold text-gray-800">12 GAS & 12 HUMSS</p></div></div>
             </div>
 
             <div className="glass-card rounded-3xl overflow-hidden">
@@ -384,17 +384,17 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               </div>
               
               {loading ? <div className="p-10 text-center text-gray-500 font-medium">Loading students...</div> : (
-                <div className="overflow-x-auto">
+                <div className="table-scroll">
                   <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Last Name</th><th className="px-5 py-4 font-bold">First Name</th><th className="px-5 py-4 font-bold">M.I.</th><th className="px-5 py-4 font-bold">Sex</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Course</th><th className="px-5 py-4 font-bold">Area</th><th className="px-5 py-4 font-bold text-right">Action</th></tr></thead>
+                    <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Last Name</th><th className="px-5 py-4 font-bold">First Name</th><th className="px-5 py-4 font-bold">M.I.</th><th className="px-5 py-4 font-bold">Sex</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Course</th><th className="px-5 py-4 font-bold">Area</th><th className="px-5 py-4 font-bold text-right sticky-action">Action</th></tr></thead>
                     <tbody className="divide-y divide-white/40">
                       {filteredStudents.map(student => (
                         <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
                           <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}</td><td className="px-5 py-4 text-gray-800">{student.first_name}</td><td className="px-5 py-4 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td><td className="px-5 py-4 text-gray-600">{student.sex}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.course}</td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.deployment_area}</td>
-                          <td className="px-5 py-4 text-right flex justify-end gap-2">
+                          <td className="px-5 py-4 text-right sticky-action"><div className="flex justify-end gap-2">
                             <button onClick={() => { setEditingStudent(student); setEditFormData({...student}); }} className="text-orange-600 hover:text-orange-800 font-bold text-sm bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg transition-colors"><Edit size={14} /></button>
                             <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-bold text-sm bg-blue-50/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">View Record</button>
-                          </td>
+                          </div></td>
                         </tr>
                       ))}
                     </tbody>
@@ -410,40 +410,40 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
             <div className="glass-card rounded-3xl overflow-hidden">
               <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Student Registrations</h2></div>
               {pendingStudents.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na estudyante.</div> : (
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Name</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Field & Course</th><th className="px-5 py-4 font-bold text-right">Action</th></tr></thead>
+                <div className="table-scroll"><table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Name</th><th className="px-5 py-4 font-bold">Section</th><th className="px-5 py-4 font-bold">Field & Course</th><th className="px-5 py-4 font-bold text-right sticky-action">Action</th></tr></thead>
                   <tbody className="divide-y divide-white/40">
                     {pendingStudents.map(student => (
                       <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
                         <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}, {student.first_name}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.field} <br/> {student.course}</td>
-                        <td className="px-5 py-4 text-right flex justify-end gap-2">
+                        <td className="px-5 py-4 text-right sticky-action"><div className="flex justify-end gap-2">
                           <button onClick={() => handleApprove(student.lrn)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-green-200 transition-colors"><CheckCircle size={16} /> Approve</button>
                           <button onClick={() => handleReject(student.lrn)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-red-200 transition-colors"><XCircle size={16} /> Reject</button>
-                        </td>
+                        </div></td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
 
             {isAdmin && <div className="glass-card rounded-3xl overflow-hidden">
               <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Pending Teacher Registrations</h2></div>
               {pendingTeachers.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na teacher.</div> : (
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">Email</th><th className="px-5 py-4 font-bold">Role</th><th className="px-5 py-4 font-bold">Date Registered</th><th className="px-5 py-4 font-bold text-right">Action</th></tr></thead>
+                <div className="table-scroll"><table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">Email</th><th className="px-5 py-4 font-bold">Role</th><th className="px-5 py-4 font-bold">Date Registered</th><th className="px-5 py-4 font-bold text-right sticky-action">Action</th></tr></thead>
                   <tbody className="divide-y divide-white/40">
                     {pendingTeachers.map(t => (
                       <tr key={t.email} className="hover:bg-white/40 transition-colors">
                         <td className="px-5 py-4 font-bold text-gray-800">{t.email}</td><td className="px-5 py-4 text-gray-600">{t.role}</td><td className="px-5 py-4 text-gray-600">{new Date(t.created_at).toLocaleDateString()}</td>
-                        <td className="px-5 py-4 text-right flex justify-end gap-2">
+                        <td className="px-5 py-4 text-right sticky-action"><div className="flex justify-end gap-2">
                           <button onClick={() => handleApproveTeacher(t.email)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors"><CheckCircle size={16} /> Approve</button>
                           <button onClick={() => handleRejectTeacher(t.email)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors"><XCircle size={16} /> Reject</button>
-                        </td>
+                        </div></td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>}
           </div>
@@ -453,19 +453,19 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
           <div className="glass-card rounded-3xl overflow-hidden">
             <div className="p-5 bg-white/40 border-b border-white/50 backdrop-blur-sm"><h2 className="font-bold text-gray-800">Password Reset Requests</h2></div>
             {resetRequests.length === 0 ? <div className="p-10 text-center text-gray-500 font-medium">Walang pending na reset requests.</div> : (
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Pangalan</th><th className="px-5 py-4 font-bold">Dahilan</th><th className="px-5 py-4 font-bold">Petsa</th><th className="px-5 py-4 font-bold text-right">Aksyon</th></tr></thead>
+              <div className="table-scroll"><table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-white/30 border-b border-white/50 text-gray-600"><tr><th className="px-5 py-4 font-bold">LRN</th><th className="px-5 py-4 font-bold">Pangalan</th><th className="px-5 py-4 font-bold">Dahilan</th><th className="px-5 py-4 font-bold">Petsa</th><th className="px-5 py-4 font-bold text-right sticky-action">Aksyon</th></tr></thead>
                 <tbody className="divide-y divide-white/40">
                   {resetRequests.map(req => (
                     <tr key={req.id} className="hover:bg-white/40 transition-colors">
-                      <td className="px-5 py-4 font-mono text-gray-700">{req.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{req.student_name}</td><td className="px-5 py-4 text-gray-600 text-xs">{req.reason || 'Walang dahilan'}</td><td className="px-5 py-4 text-gray-600 text-xs">{new Date(req.requested_at).toLocaleString()}</td>
-                      <td className="px-5 py-4 text-right">
+                      <td className="px-5 py-4 font-mono text-gray-700">{req.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{req.student_name}</td><td className="px-5 py-4 text-gray-600 text-xs whitespace-normal min-w-[160px] max-w-xs">{req.reason || 'Walang dahilan'}</td><td className="px-5 py-4 text-gray-600 text-xs">{new Date(req.requested_at).toLocaleString()}</td>
+                      <td className="px-5 py-4 text-right sticky-action">
                         <button onClick={() => setResetRequestToProcess(req)} className="text-white bg-orange-500 hover:bg-orange-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm transition-colors ml-auto"><KeyRound size={16} /> Reset Password</button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         )}
@@ -535,7 +535,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
       {selectedStudent && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="glass-card rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="p-6 border-b border-white/50 bg-white/40 flex justify-between items-start">
+            <div className="p-4 sm:p-6 border-b border-white/50 bg-white/40 flex justify-between items-start gap-3">
               <div>
                 <h3 className="text-xl font-extrabold text-gray-800">Student Records</h3>
                 <p className="text-sm text-gray-600 font-medium mt-1">{selectedStudent.last_name || ''}, {selectedStudent.first_name || ''} ({selectedStudent.lrn || ''})</p>
@@ -544,13 +544,13 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               <button onClick={() => setSelectedStudent(null)} className="text-gray-400 hover:text-gray-600 p-2 bg-white/50 rounded-full transition-colors"><X size={20} /></button>
             </div>
 
-            <div className="flex border-b border-white/50 px-6 bg-white/20">
+            <div className="flex border-b border-white/50 px-2 sm:px-6 bg-white/20 overflow-x-auto whitespace-nowrap">
               <button onClick={() => setModalTab('attendance')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'attendance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><CalendarCheck size={18} /> Attendance (DTR)</button>
               <button onClick={() => setModalTab('diary')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'diary' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><BookOpen size={18} /> Daily Diary</button>
               <button onClick={() => setModalTab('requirements')} className={`py-4 px-6 font-bold text-sm border-b-2 transition-all flex items-center gap-2 ${modalTab === 'requirements' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}><FileText size={18} /> Requirements</button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
               {loadingRecords ? <div className="text-center py-10 text-gray-500 font-medium">Loading records...</div> : modalTab === 'attendance' ? (
                 attendance.length === 0 ? <div className="text-center py-10 text-gray-500 font-medium">Wala pang attendance record.</div> : (
                   <>
@@ -558,7 +558,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                       <span className="font-bold text-white/90">Total Rendered Hours:</span>
                       <span className="text-3xl font-extrabold text-white">{calculateTotalHours()} <span className="text-lg">hrs</span></span>
                     </div>
-                    <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden">
+                    <div className="bg-white/60 rounded-2xl border border-white/50 table-scroll">
                       <table className="w-full text-left text-sm whitespace-nowrap">
                         <thead className="bg-white/80 border-b border-gray-100 text-gray-600">
                           <tr><th className="px-4 py-3 font-bold">Date</th><th className="px-4 py-3 font-bold text-center">Morning In/Out</th><th className="px-4 py-3 font-bold text-center">Afternoon In/Out</th><th className="px-4 py-3 font-bold">Photos</th><th className="px-4 py-3 font-bold text-right">Total</th><th className="px-4 py-3 font-bold text-right">Actions</th></tr>
@@ -611,7 +611,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                     </div>
                     <div className="bg-white/60 rounded-2xl border border-white/50 overflow-hidden divide-y divide-gray-100">
                       {requirements.map(req => (
-                        <div key={req.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors">
+                        <div key={req.id} className="p-4 flex flex-wrap items-center justify-between gap-3 hover:bg-white transition-colors">
                           <div className="flex items-center gap-3"><div className="bg-blue-100 p-2 rounded-lg text-blue-600"><FileText size={20} /></div><div><p className="font-bold text-sm text-gray-800">{req.requirement_name}</p><p className="text-xs text-gray-500 font-medium">{req.file_name} • {new Date(req.uploaded_at).toLocaleDateString()}</p></div></div>
                           <div className="flex items-center gap-1.5 shrink-0">
                             {reqLinks[req.id]
@@ -628,7 +628,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
               )}
             </div>
 
-            <div className="p-4 border-t border-white/50 bg-white/40 flex justify-end gap-3">
+            <div className="p-4 border-t border-white/50 bg-white/40 flex flex-wrap justify-end gap-3">
               <button onClick={() => setSelectedStudent(null)} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Close</button>
               {modalTab === 'attendance' && <button onClick={handleExportDTR} disabled={attendance.length === 0} className="px-5 py-2.5 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold rounded-xl transition-colors flex items-center gap-2 shadow-sm"><Download size={16} /> Export DTR</button>}
             </div>
