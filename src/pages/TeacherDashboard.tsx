@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock, KeyRound, Edit, Printer, ExternalLink } from 'lucide-react'
+import { LogOut, Users, CalendarCheck, Search, X, Download, BookOpen, Image as ImageIcon, CheckCircle, XCircle, UserPlus, FileText, RotateCcw, Star, Unlock, KeyRound, Edit, Printer, ExternalLink, Trash2, AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { RUBRIC_CATEGORIES, SECTIONS, normalizeName } from '../lib/constants'
 import { downloadCsv } from '../lib/csv'
@@ -51,6 +51,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const [resetRequestToProcess, setResetRequestToProcess] = useState<ResetRequest | null>(null)
   const [newPasswordForStudent, setNewPasswordForStudent] = useState('')
   const [isResetting, setIsResetting] = useState(false)
+
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false)
 
   const fetchStudents = async () => {
     setLoading(true)
@@ -153,13 +158,53 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
   const approvedStudents = students.filter(s => s.status === 'Approved')
   const pendingStudents = students.filter(s => s.status === 'Pending')
 
+  // Posibleng duplicate: pareho ang apelyido at pangalan pero magkaiba ang LRN
+  const nameKey = (s: Student) => `${normalizeName(s.last_name)}|${normalizeName(s.first_name)}`
+  const nameCounts = new Map<string, number>()
+  students.filter(s => s.status !== 'Rejected').forEach(s => nameCounts.set(nameKey(s), (nameCounts.get(nameKey(s)) ?? 0) + 1))
+  const isPossibleDuplicate = (s: Student) => (nameCounts.get(nameKey(s)) ?? 0) > 1
+  const duplicateCount = approvedStudents.filter(isPossibleDuplicate).length + pendingStudents.filter(isPossibleDuplicate).length
+  const duplicateBadge = (s: Student) => isPossibleDuplicate(s)
+    ? <span title="May kaparehong pangalan na ibang LRN" className="ml-2 inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md text-[10px] font-bold align-middle"><AlertTriangle size={10} /> Duplicate?</span>
+    : null
+
+  // Binubura ang estudyante at lahat ng record at file niya
+  const handleDeleteStudent = async () => {
+    if (!studentToDelete || deleteConfirmText.trim() !== studentToDelete.lrn) return
+    const lrn = studentToDelete.lrn
+    setIsDeleting(true)
+    try {
+      // 1. Mga file sa Storage (<LRN>/...). Kung may hindi nabura, tuloy pa rin.
+      for (const bucket of ['attendance_photos', 'diary_images', 'requirements_files']) {
+        const { data: files } = await supabase.storage.from(bucket).list(lrn, { limit: 1000 })
+        const paths = (files ?? []).filter(f => f.name && f.id).map(f => `${lrn}/${f.name}`)
+        if (paths.length > 0) await supabase.storage.from(bucket).remove(paths)
+      }
+      // 2. Database records + login account
+      const { error } = await supabase.rpc('delete_student', { p_lrn: lrn })
+      if (error) throw error
+      alert(`🗑️ Nabura na si ${studentToDelete.last_name}, ${studentToDelete.first_name} (${lrn}).`)
+      setStudentToDelete(null)
+      setDeleteConfirmText('')
+      if (selectedStudent?.lrn === lrn) setSelectedStudent(null)
+      fetchStudents()
+    } catch (err: any) {
+      alert('Error: ' + err.message)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const openDeleteModal = (student: Student) => { setStudentToDelete(student); setDeleteConfirmText('') }
+
   const filteredStudents = approvedStudents.filter(s => {
     const matchesSearch = (s.last_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (s.first_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (s.lrn || '').includes(searchTerm);
     const matchesSection = filterSection === 'All' || s.section === filterSection;
     const matchesSex = filterSex === 'All' || s.sex === filterSex;
-    return matchesSearch && matchesSection && matchesSex;
+    const matchesDup = !showDuplicatesOnly || isPossibleDuplicate(s);
+    return matchesSearch && matchesSection && matchesSex && matchesDup;
   }).sort((a, b) => {
     const sexA = a.sex || '';
     const sexB = b.sex || '';
@@ -379,6 +424,7 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                   <div className="relative w-full md:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Search name or LRN..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="glass-input w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none" /></div>
                   <select value={filterSection} onChange={e => setFilterSection(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none"><option value="All">All Sections</option>{SECTIONS.map(sec => <option key={sec} value={sec}>{sec}</option>)}</select>
                   <select value={filterSex} onChange={e => setFilterSex(e.target.value)} className="glass-input px-4 py-2.5 rounded-xl text-sm font-medium outline-none"><option value="All">All Sex</option><option value="Male">Male</option><option value="Female">Female</option></select>
+                  {duplicateCount > 0 && <button onClick={() => setShowDuplicatesOnly(!showDuplicatesOnly)} className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors ${showDuplicatesOnly ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}><AlertTriangle size={14} /> {showDuplicatesOnly ? 'Ipakita lahat' : `Duplicates (${duplicateCount})`}</button>}
                 </div>
                 <button onClick={handleExportStudents} className="bg-green-500 hover:bg-green-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-green-200 transition-colors w-full md:w-auto justify-center"><Download size={16} /> Export List</button>
               </div>
@@ -390,10 +436,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                     <tbody className="divide-y divide-white/40">
                       {filteredStudents.map(student => (
                         <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
-                          <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}</td><td className="px-5 py-4 text-gray-800">{student.first_name}</td><td className="px-5 py-4 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td><td className="px-5 py-4 text-gray-600">{student.sex}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.course}</td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.deployment_area}</td>
+                          <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}</td><td className="px-5 py-4 text-gray-800">{student.first_name}{duplicateBadge(student)}</td><td className="px-5 py-4 text-gray-600">{student.middle_name ? student.middle_name.charAt(0) + '.' : '-'}</td><td className="px-5 py-4 text-gray-600">{student.sex}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.course}</td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.deployment_area}</td>
                           <td className="px-5 py-4 text-right sticky-action"><div className="flex justify-end gap-2">
                             <button onClick={() => { setEditingStudent(student); setEditFormData({...student}); }} className="text-orange-600 hover:text-orange-800 font-bold text-sm bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg transition-colors"><Edit size={14} /></button>
                             <button onClick={() => handleViewRecord(student)} className="text-blue-600 hover:text-blue-800 font-bold text-sm bg-blue-50/50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">View Record</button>
+                            <button onClick={() => openDeleteModal(student)} title="Burahin ang estudyante" className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"><Trash2 size={14} /></button>
                           </div></td>
                         </tr>
                       ))}
@@ -415,10 +462,11 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
                   <tbody className="divide-y divide-white/40">
                     {pendingStudents.map(student => (
                       <tr key={student.lrn} className="hover:bg-white/40 transition-colors">
-                        <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}, {student.first_name}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.field} <br/> {student.course}</td>
+                        <td className="px-5 py-4 font-mono text-gray-700">{student.lrn}</td><td className="px-5 py-4 font-bold text-gray-800">{student.last_name}, {student.first_name}{duplicateBadge(student)}</td><td className="px-5 py-4"><span className="bg-blue-100/80 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">{student.section}</span></td><td className="px-5 py-4 text-gray-600 text-xs font-medium">{student.field} <br/> {student.course}</td>
                         <td className="px-5 py-4 text-right sticky-action"><div className="flex justify-end gap-2">
                           <button onClick={() => handleApprove(student.lrn)} className="text-white bg-green-500 hover:bg-green-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-green-200 transition-colors"><CheckCircle size={16} /> Approve</button>
                           <button onClick={() => handleReject(student.lrn)} className="text-white bg-red-500 hover:bg-red-600 font-bold text-sm flex items-center gap-1 px-4 py-2 rounded-xl shadow-sm shadow-red-200 transition-colors"><XCircle size={16} /> Reject</button>
+                          <button onClick={() => openDeleteModal(student)} title="Burahin (duplicate o mali)" className="text-red-600 bg-red-50 hover:bg-red-100 font-bold text-sm flex items-center gap-1 px-3 py-2 rounded-xl transition-colors"><Trash2 size={16} /></button>
                         </div></td>
                       </tr>
                     ))}
@@ -470,6 +518,33 @@ export default function TeacherDashboard({ onOpenScores, onOpenAnnouncements }: 
           </div>
         )}
       </div>
+
+      {/* DELETE STUDENT MODAL */}
+      {studentToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[90]">
+          <div className="glass-card rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-red-100 text-red-600 p-3 rounded-2xl"><Trash2 size={22} /></div>
+              <h3 className="font-extrabold text-gray-800 text-lg">Burahin ang Estudyante</h3>
+            </div>
+            <div className="bg-white/70 rounded-2xl p-4 mb-4 text-sm space-y-1">
+              <p className="font-bold text-gray-800">{studentToDelete.last_name}, {studentToDelete.first_name} {studentToDelete.middle_name ? studentToDelete.middle_name.charAt(0) + '.' : ''}</p>
+              <p className="text-gray-600">LRN: <span className="font-mono font-bold">{studentToDelete.lrn}</span></p>
+              <p className="text-gray-600">{studentToDelete.section} • {studentToDelete.status}</p>
+            </div>
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-4 mb-4 text-sm">
+              <p className="font-bold mb-1">Hindi na ito maibabalik.</p>
+              <p>Mabubura ang account at <b>lahat</b> ng attendance, photos, diary, grades at requirements ng LRN na ito. Siguraduhing ito ang <b>maling</b> account, hindi ang tama.</p>
+            </div>
+            <label className="block text-sm font-bold text-gray-700 mb-1">I-type ang LRN para kumpirmahin</label>
+            <input type="text" inputMode="numeric" value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} className="glass-input w-full px-4 py-2.5 rounded-xl outline-none font-mono" placeholder={studentToDelete.lrn} autoFocus />
+            <div className="flex flex-wrap justify-end gap-3 mt-6">
+              <button onClick={() => { setStudentToDelete(null); setDeleteConfirmText('') }} disabled={isDeleting} className="px-5 py-2.5 text-gray-600 font-bold hover:bg-white/80 rounded-xl transition-colors">Cancel</button>
+              <button onClick={handleDeleteStudent} disabled={isDeleting || deleteConfirmText.trim() !== studentToDelete.lrn} className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-bold disabled:opacity-40 transition-colors"><Trash2 size={16} /> {isDeleting ? 'Binubura...' : 'Burahin'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* RESET PASSWORD MODAL */}
       {resetRequestToProcess && (
